@@ -2,38 +2,40 @@
 // - write some data to address specific address in SRAM, then read it back
 // - cross the read value into 50 MHz domain and send over UART once per 2 seconds
 module top_sram_rw (
-    input         CLK_250,
+  input CLK_250,
 
-    // SRAM interface
-    inout  [15:0] SRAM_D,
-    output [15:0] SRAM_A,
-    output        SRAM_STROBE,
-    output        SRAM_WR,
-    output        SRAM_OE,
-    output        SRAM_CLK,
+  // SRAM interface
+  inout  [15:0] SRAM_D,
+  output [15:0] SRAM_A,
+  output        SRAM_STROBE,
+  output        SRAM_WR,
+  output        SRAM_OE,
+  output        SRAM_CLK,
 
-    // GDP interface
-    input         BOUT,
-    input         FATAL,
-    input         PRQ,
-    output        PCLK,
-    output        CLR,
-    output        INIT,
-    output        ICS,
-    output        CLKA,
-    output        CLKB,
-    output        ACD_DIRECTION,
-    inout [15:0]  ACD,
+  // GDP interface
+  input         BOUT,
+  input         FATAL,
+  input         PRQ,
+  output        PCLK,
+  output        CLR,
+  output        INIT,
+  output        ICS,
+  output        CLKA,
+  output        CLKB,
+  output        ACD_DIRECTION,
+  inout  [15:0] ACD,
 
-    input         UART_RX,
-    output        UART_TX,
-    output        LED
+  input  UART_RX,
+  output UART_TX,
+  output LED
 );
   wire clk_50;
+  wire clk_125;
   wire rst_n;
   clock_gen u_clock_gen (
     .clk_250(CLK_250),
-    .clk_50(clk_50),
+    .clk_125(clk_125),
+    .clk_50 (clk_50),
     .rst_n  (rst_n)
   );
 
@@ -42,18 +44,16 @@ module top_sram_rw (
     if (!rst_n) sram_clk_ctr <= 0;
     else sram_clk_ctr <= sram_clk_ctr + 1'b1;
   end
-  // wire sram_ctrl_clk = sram_clk_ctr[4];  // 3.125Mhz
-  // wire sram_ctrl_clk = clk_50; // 50Mhz
-  wire sram_ctrl_clk = CLK_250; // 250Mhz
+  wire sram_ctrl_clk = clk_125;  // 125Mhz
 
-  localparam [15:0] TEST_ADDR = 16'hFF11;
-  localparam [15:0] TEST_DATA = 16'hFFAA;
+  localparam [15:0] TEST_ADDR0 = 16'h1111;
+  localparam [15:0] TEST_DATA0 = 16'hAAAA;
+  localparam [15:0] TEST_ADDR1 = 16'h2222;
+  localparam [15:0] TEST_DATA1 = 16'hBBBB;
 
-//  wire [15:0] addr_req = TEST_ADDR;
-  reg  [15:0] addr_req;
-  wire [15:0] data_req = TEST_DATA;
-
-  wire [15:0] sram_data_out;
+  reg  [15:0] sram_addr;
+  reg  [15:0] sram_wdata;
+  wire [15:0] sram_rdata;
   wire        sram_valid;
   wire        sram_busy;
   wire        wr_req;
@@ -62,11 +62,11 @@ module top_sram_rw (
   sram_controller u_sram_controller (
     .clk(sram_ctrl_clk),
     .rst_n(rst_n),
-    .addr(addr_req),
-    .wdata(data_req),
+    .addr(sram_addr),
+    .wdata(sram_wdata),
     .wr(wr_req),
     .rd(rd_req),
-    .rdata(sram_data_out),
+    .rdata(sram_rdata),
     .valid(sram_valid),
     .busy(sram_busy),
     .sram_addr_io(SRAM_A),
@@ -77,59 +77,83 @@ module top_sram_rw (
     .sram_oe_n_io(SRAM_OE)
   );
 
-  localparam S_IDLE = 3'd0,
-             S_WRITE_REQ = 3'd1,
-             S_WRITE_WAIT = 3'd2,
-             S_WRITE_GAP = 3'd3,
-             S_READ_REQ = 3'd4,
-             S_READ_WAIT = 3'd5,
-             S_DONE = 3'd6;
+  localparam S_IDLE = 4'd0,
+             S_WRITE_REQ0 = 4'd1,
+             S_WRITE_WAIT0 = 4'd2,
+             S_WRITE_GAP0 = 4'd3,
+             S_WRITE_REQ1 = 4'd4,
+             S_WRITE_WAIT1 = 4'd5,
+             S_WRITE_GAP1 = 4'd6,
+             S_READ_REQ = 4'd7,
+             S_READ_WAIT = 4'd8,
+             S_DONE = 4'd9;
 
   reg [15:0] read_reg;
 
-  reg [ 2:0] state;
-  reg [ 4:0] wr_gap_ctr;
+  reg [ 3:0] state;
+  reg [ 7:0] wr_gap_ctr;
   always @(posedge sram_ctrl_clk or negedge rst_n) begin
     if (!rst_n) begin
       state <= S_IDLE;
       read_reg <= 0;
-      addr_req <= 16'hFF11;
+      sram_addr <= 0;
+      sram_wdata <= 0;
     end
     else begin
       wr_req <= 0;
       rd_req <= 0;
       wr_gap_ctr <= wr_gap_ctr << 1;
-      read_reg <= (state == S_READ_WAIT && sram_valid) ? sram_data_out : read_reg;
-      addr_req <= state >= S_WRITE_GAP ? 16'hFF22 : 16'hFF11;
-      // addr_req <= state >= S_WRITE_GAP ? 16'hFF11 : 16'hFF11;
 
       case (state)
-        S_IDLE: state <= sram_busy ? S_IDLE : S_WRITE_REQ;
+        S_IDLE: state <= sram_busy ? S_IDLE : S_WRITE_REQ0;
 
-        S_WRITE_REQ: begin
+        S_WRITE_REQ0: begin
+          sram_addr <= TEST_ADDR0;
+          sram_wdata <= TEST_DATA0;
           wr_req <= 1;
-          state  <= S_WRITE_WAIT;
+          state  <= S_WRITE_WAIT0;
         end
 
-        S_WRITE_WAIT: begin
+        S_WRITE_WAIT0: begin
           if (!sram_busy) begin
-            state <= S_WRITE_GAP;
-            wr_gap_ctr <= 5'b00001;
+            state <= S_WRITE_GAP0;
+            wr_gap_ctr <= 8'b00000001;
+          end
+        end
+
+        // wait few cycles between write operations
+        S_WRITE_GAP0: begin
+          state <= wr_gap_ctr == 0 ? S_WRITE_REQ1 : S_WRITE_GAP0;
+        end
+
+        S_WRITE_REQ1: begin
+          sram_addr <= TEST_ADDR1;
+          sram_wdata <= TEST_DATA1;
+          wr_req <= 1;
+          state  <= S_WRITE_WAIT1;
+        end
+
+        S_WRITE_WAIT1: begin
+          if (!sram_busy) begin
+            state <= S_WRITE_GAP1;
+            wr_gap_ctr <= 8'b00000001;
           end
         end
 
         // wait few cycles between write and read operations
-        S_WRITE_GAP: begin
-          state <= wr_gap_ctr == 0 ? S_READ_REQ : S_WRITE_GAP;
+        S_WRITE_GAP1: begin
+          state <= wr_gap_ctr == 0 ? S_READ_REQ : S_WRITE_GAP1;
         end
 
         S_READ_REQ: begin
+          sram_addr <= TEST_ADDR0;
           rd_req <= 1;
           state  <= S_READ_WAIT;
         end
 
         S_READ_WAIT: begin
           if (sram_valid) begin
+            read_reg <= sram_data_out;
             state <= S_DONE;
           end
         end

@@ -28,12 +28,12 @@ module top (
 );
 
   // clock generation
-  wire clk_50;
+  wire clk_50, clk_125;
+  wire clka, clkb;
   wire rst_n;
-  wire clka;
-  wire clkb;
   clock_gen u_clock_gen (
     .clk_250(CLK_250),
+    .clk_125(clk_125),
     .clk_50(clk_50),
     .rst_n(rst_n),
     .clka(clka),
@@ -41,6 +41,9 @@ module top (
   );
   assign CLKA = clka;
   assign CLKB = clkb;
+
+  // SRAM should work at 125Mhz
+  assign sram_ctrl_clk = clk_125;
 
   // LED flickering
   reg [24:0] counter;
@@ -91,8 +94,8 @@ module top (
   );
 
   // ====================================================================================================
-  // UART control module (50Mhz) -> CDC bridge -> SRAM mux port 0 (250 Mhz) -> SRAM controller (250 Mhz)
-  // GDP memory controller (5Mhz) -> CDC bridge -> SRAM mux port 1 (250 Mhz) -> SRAM controller (250 Mhz)
+  // UART control module (50Mhz) -> CDC bridge -> SRAM mux port 0 (125 Mhz) -> SRAM controller (125 Mhz)
+  // GDP memory controller (5Mhz) -> CDC bridge -> SRAM mux port 1 (125 Mhz) -> SRAM controller (125 Mhz)
   // ====================================================================================================
 
   // SRAM multiplexer ports
@@ -130,7 +133,7 @@ module top (
   wire sram_g_busy;
 
   sram_mux sram_ctrl (
-    .clk(CLK_250),
+    .clk(sram_ctrl_clk),
     .rst_n(rst_n),
     .req0(sram_req0),
     .wr0(sram_wr0),
@@ -156,7 +159,7 @@ module top (
   // XXX: SRAM OE is always low (active), SRAM controller does not use it, could be changed later
   assign SRAM_OE = 1'b0;
 
-  // CDC bridge from 50 MHz control to 250 MHz SRAM (port0)
+  // CDC bridge from 50 MHz control to 125 MHz SRAM (port0)
   sram_uart_cdc_bridge sram_uart_cdc (
     .u_clk(clk_50),
     .u_rst_n(rst_n),
@@ -168,7 +171,7 @@ module top (
     .u_rdata(sram_u_rdata),
     .u_done(sram_u_valid),
     .u_busy(sram_u_busy),
-    .s_clk(CLK_250),
+    .s_clk(sram_ctrl_clk),
     .s_rst_n(rst_n),
     .s_req(sram_req0),
     .s_wr_req(sram_wr0),
@@ -210,7 +213,7 @@ module top (
     .gdp_rdata(sram_g_rdata),
     .gdp_done(sram_g_valid),
     .gdp_busy(sram_g_busy),
-    .s_clk(CLK_250),
+    .s_clk(sram_ctrl_clk),
     .s_rst_n(rst_n),
     .s_req(sram_req1),
     .s_wr_req(sram_wr1),

@@ -29,9 +29,6 @@ module sram_uart_cdc_bridge (
   reg req_toggle_u;
   reg req_meta_s, req_sync_s, req_prev_s;
 
-  // need that to fit into 250Mhz timing
-  reg        trigger_pulse;
-
   reg [15:0] u_addr_hold;
   reg [15:0] u_wdata_hold;
   reg        u_is_read_hold;
@@ -83,19 +80,16 @@ module sram_uart_cdc_bridge (
       s_rd_req <= 0;
       s_addr <= 0;
       s_wdata <= 0;
-      trigger_pulse <= 0;
     end
     else begin
       req_meta_s <= req_toggle_u;
       req_sync_s <= req_meta_s;
       req_prev_s <= req_sync_s;
 
-      trigger_pulse <= (req_sync_s != req_prev_s);
-
       s_wr_req <= 0;
       s_rd_req <= 0;
 
-      if (trigger_pulse) begin
+      if (req_sync_s != req_prev_s) begin
         s_addr  <= u_addr_hold;
         s_wdata <= u_wdata_hold;
         if (u_is_read_hold) s_rd_req <= 1;
@@ -107,20 +101,20 @@ module sram_uart_cdc_bridge (
   // ============================================================
   // 2. SRAM -> UART (Response Path)
   // ============================================================
-  reg ack_toggle_s;
-  reg ack_meta_u, ack_sync_u, ack_prev_u;
+  reg data_valid_toggle_s;
+  reg data_valid_sync0, data_valid_sync1, data_valid_sync2;
   reg [15:0] s_rdata_hold;
 
   // SRAM Side
   always @(posedge s_clk or negedge s_rst_n) begin
     if (!s_rst_n) begin
-      ack_toggle_s <= 0;
+      data_valid_toggle_s <= 0;
       s_rdata_hold <= 0;
     end
     else begin
       if (s_valid) begin
         s_rdata_hold <= s_rdata;
-        ack_toggle_s <= ~ack_toggle_s;
+        data_valid_toggle_s <= ~data_valid_toggle_s;
       end
     end
   end
@@ -128,19 +122,19 @@ module sram_uart_cdc_bridge (
   // UART Side
   always @(posedge u_clk or negedge u_rst_n) begin
     if (!u_rst_n) begin
-      ack_meta_u <= 0;
-      ack_sync_u <= 0;
-      ack_prev_u <= 0;
+      data_valid_sync0 <= 0;
+      data_valid_sync1 <= 0;
+      data_valid_sync2 <= 0;
       u_done <= 0;
       u_rdata <= 0;
     end
     else begin
-      ack_meta_u <= ack_toggle_s;
-      ack_sync_u <= ack_meta_u;
-      ack_prev_u <= ack_sync_u;
+      data_valid_sync0 <= data_valid_toggle_s;
+      data_valid_sync1 <= data_valid_sync0;
+      data_valid_sync2 <= data_valid_sync1;
 
       u_done <= 0;
-      if (ack_sync_u != ack_prev_u) begin
+      if (data_valid_sync1 != data_valid_sync2) begin
         u_rdata <= s_rdata_hold;
         u_done  <= 1;
       end

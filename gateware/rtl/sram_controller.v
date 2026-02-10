@@ -37,14 +37,13 @@ module sram_controller (
     else wdata_s <= wdata;
   end
 
-  // state for FSM: IDLE -> issue ADSC -> issue GW -> wait data (2 cycles) -> capture data -> back to IDLE
-  // 2 cycles are necessary for 250Mhz, 1 cycle is OK for 100Mhz (180Mhz in theory)
-  reg  [5:0] state;
+  // state for FSM: IDLE -> issue ADSC -> issue GW -> wait data (1 cycle) -> capture data -> back to IDLE
+  reg  [4:0] state;
 
   wire       in_idle = state[0];
   wire       in_issue_adsc = state[1];
   wire       in_issue_gw = state[2];
-  wire       in_data_valid = state[5];
+  wire       in_data_valid = state[4];
 
   reg        is_write_l;
   wire       latch_write_flag = in_idle && req;
@@ -64,14 +63,14 @@ module sram_controller (
   // FSM
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      state <= 6'b000001;  // IDLE
+      state <= 5'b00001;  // IDLE
     end
     else begin
       if (in_idle) begin
-        state <= req ? 6'b000010 : 6'b000001;
+        state <= req ? 5'b00010 : 5'b00001;
       end
       else begin
-        if (in_data_valid) state <= 6'b000001;  // back IDLE
+        if (in_data_valid) state <= 5'b00001;  // back IDLE
         else state <= (state << 1);
       end
     end

@@ -33,9 +33,11 @@ module top_sram_uart (
     output        LED
 );
   wire clk_50;
+  wire clk_125;
   wire rst_n;
   clock_gen u_clock_gen (
     .clk_250(CLK_250),
+    .clk_125(clk_125),
     .clk_50(clk_50),
     .rst_n  (rst_n)
   );
@@ -44,35 +46,35 @@ module top_sram_uart (
   always @(posedge clk_50) clk_25 <= ~clk_25;
   always @(posedge clk_25) clk_12 <= ~clk_12;
   always @(posedge clk_12) clk_6 <= ~clk_6;
-  // wire        sram_ctrl_clk = CLK_250;
-  wire        sram_ctrl_clk = clk_50;
+  wire        sram_ctrl_clk = clk_125;
   wire        uart_clk = clk_50;
 
   localparam UART_FREQ = 50_000_000;
 
-  wire [15:0] sram_data_out;
+  wire [15:0] sram_rdata;
+  reg  [15:0] sram_wdata;
   wire        sram_valid;
   wire        sram_busy;
   reg         sram_wr_req;
   reg         sram_rd_req;
   reg  [15:0] sram_addr;
-  reg  [15:0] sram_data;
 
   sram_controller u_sram_controller (
     .clk(sram_ctrl_clk),
     .rst_n(rst_n),
     .addr(sram_addr),
-    .wdata(sram_data),
+    .wdata(sram_wdata),
     .wr(sram_wr_req),
     .rd(sram_rd_req),
-    .rdata(sram_data_out),
+    .rdata(sram_rdata),
     .valid(sram_valid),
     .busy(sram_busy),
     .sram_addr_io(SRAM_A),
     .sram_data_io(SRAM_D),
     .sram_we_n_io(SRAM_WR),
     .sram_adsc_n_io(SRAM_STROBE),
-    .sram_clk_io(SRAM_CLK)
+    .sram_clk_io(SRAM_CLK),
+    .sram_oe_n_io(SRAM_OE)
   );
 
   reg         u_sram_req;
@@ -101,8 +103,8 @@ module top_sram_uart (
     .s_wr_req(sram_wr_req),
     .s_rd_req(sram_rd_req),
     .s_addr(sram_addr),
-    .s_wdata(sram_data),
-    .s_rdata(sram_data_out),
+    .s_wdata(sram_wdata),
+    .s_rdata(sram_rdata),
     .s_valid(sram_valid)
   );
 
