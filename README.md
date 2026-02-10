@@ -15,7 +15,7 @@ Archive with gerber files and drill locations could be found [here](./pcb/manufa
 Bill of material in [CSV format](./pcb/bom.csv)
 
 | Reference                                                                                                                                                                      | Qty | Value                   | Mouser Part Number   |
-|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----|-------------------------|----------------------|
+|---|---|---|---|
 | Y1                                                                                                                                                                             | 1   | 250Mhz                  | 972-XLH536250000000I |
 | U1                                                                                                                                                                             | 1   | SRAM                    | 870-61LPS12836A5TQL  |
 | U2                                                                                                                                                                             | 1   | ICE40                   | 842-ICE40HX4K-TQ144  |
