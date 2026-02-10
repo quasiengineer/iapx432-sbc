@@ -1,0 +1,77 @@
+# Control
+set_io SRAM_STROBE 73
+set_io SRAM_CLK    90
+set_io SRAM_OE     91
+set_io SRAM_WR     49
+
+# Address bus
+set_io SRAM_A[0] 117
+set_io SRAM_A[1] 118
+set_io SRAM_A[2] 122
+set_io SRAM_A[3] 121
+set_io SRAM_A[4] 120
+set_io SRAM_A[5] 119
+set_io SRAM_A[6] 116
+set_io SRAM_A[7] 115
+set_io SRAM_A[8] 114
+set_io SRAM_A[9] 110
+set_io SRAM_A[10] 112
+set_io SRAM_A[11] 113
+set_io SRAM_A[12] 107
+set_io SRAM_A[13] 75
+set_io SRAM_A[14] 74
+set_io SRAM_A[15] 76
+
+# Data bus
+set_io SRAM_D[0]  106
+set_io SRAM_D[1]  105
+set_io SRAM_D[2]  99
+set_io SRAM_D[3]  98
+set_io SRAM_D[4]  97
+set_io SRAM_D[5]  96
+set_io SRAM_D[6]  88
+set_io SRAM_D[7]  87
+set_io SRAM_D[8]  85
+set_io SRAM_D[9]  84
+set_io SRAM_D[10] 83
+set_io SRAM_D[11] 82
+set_io SRAM_D[12] 81
+set_io SRAM_D[13] 80
+set_io SRAM_D[14] 79
+set_io SRAM_D[15] 78
+
+# Clock / reset / control
+set_io PCLK  1
+set_io CLR   2
+set_io INIT  3
+set_io ICS   4
+set_io BOUT  7
+set_io FATAL 11
+set_io PRQ   12
+
+# Address / control/data (ACD bus)
+set_io ACD_DIRECTION 15
+set_io ACD[0]  16
+set_io ACD[1]  17
+set_io ACD[2]  18
+set_io ACD[3]  19
+set_io ACD[4]  20
+set_io ACD[5]  21
+set_io ACD[6]  42
+set_io ACD[7]  39
+set_io ACD[8]  38
+set_io ACD[9]  37
+set_io ACD[10] 29
+set_io ACD[11] 28
+set_io ACD[12] 25
+set_io ACD[13] 24
+set_io ACD[14] 23
+set_io ACD[15] 22
+
+set_io CLKA 143
+set_io CLKB 144
+set_io CLK_250 52
+
+set_io UART_RX 70
+set_io UART_TX 67
+set_io LED 68
