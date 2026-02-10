@@ -51,7 +51,7 @@ Bill of material in [CSV format](./pcb/bom.csv)
 | C38,C39,C46,C47                                                                                                                                                                | 4   | 1u                      | 187-CL21B105KPFNNNE  |
 | C29,C30,C32,C33,C44,C45                                                                                                                                                        | 6   | 22u                     | 187-CL21A226MAYNNNE  |
 | C34,C40,C41                                                                                                                                                                    | 3   | 10u                     | 187-CL21A106KQFNNNG  |
-| C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,C11,C12,C13,C14,C15,C16,C17,C18,C19,C21,C22,C23,C25,C26,C27,C28,C31,C35,C36,C37,C50,C51,C52,C53,C54,C55,C56,C57,C58,C59,C60,C61,C62,C63,C64,C65 | 46  | 100n                    | 187-CL10B104KB8NNNC  |
+| C1..C19,C21,C22,C23,C25..C28,C31,C35,C36,C37,C50..C65 | 46  | 100n                    | 187-CL10B104KB8NNNC  |
 | U8                                                                                                                                                                             | 1   | 43202                   |                      |
 | U7                                                                                                                                                                             | 1   | 43201                   |                      |
 
