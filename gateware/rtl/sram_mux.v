@@ -1,5 +1,5 @@
 module sram_mux (
-  input wire clk,   // 250Mhz
+  input wire clk,
   input wire rst_n,
 
   // Internal interface (from core logic)
@@ -13,8 +13,7 @@ module sram_mux (
   input  wire        wr1,
   input  wire        rd0,
   input  wire        rd1,
-  output reg  [15:0] rdata0,
-  output reg  [15:0] rdata1,
+  output reg  [15:0] rdata,
   output             valid,
   output             busy,
 
@@ -22,6 +21,7 @@ module sram_mux (
   output reg  [15:0] sram_addr_io,
   inout  wire [15:0] sram_data_io,
   output reg         sram_we_n_io,
+  output reg         sram_oe_n_io,
   output reg         sram_adsc_n_io,
   output reg         sram_clk_io
 );
@@ -33,8 +33,6 @@ module sram_mux (
   reg wr_r, rd_r;
   reg [15:0] addr_r;
   reg [15:0] wdata_r;
-  wire [15:0] rdata;
-  reg sel;
 
   sram_controller controller (
     .clk(clk),
@@ -50,7 +48,8 @@ module sram_mux (
     .sram_data_io(sram_data_io),
     .sram_we_n_io(sram_we_n_io),
     .sram_adsc_n_io(sram_adsc_n_io),
-    .sram_clk_io(sram_clk_io)
+    .sram_clk_io(sram_clk_io),
+    .sram_oe_n_io(sram_oe_n_io)
   );
 
   // main routing logic
@@ -87,17 +86,6 @@ module sram_mux (
       rd_r    <= rd;
       addr_r  <= addr;
       wdata_r <= wdata;
-    end
-  end
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      rdata0 <= {16{1'b0}};
-      rdata1 <= {16{1'b0}};
-    end
-    else begin
-      rdata0 <= valid ? rdata : rdata0;
-      rdata1 <= valid ? rdata : rdata1;
     end
   end
 

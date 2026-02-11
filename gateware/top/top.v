@@ -43,6 +43,7 @@ module top (
   assign CLKB = clkb;
 
   // SRAM should work at 125Mhz
+  wire sram_ctrl_clk;
   assign sram_ctrl_clk = clk_125;
 
   // LED flickering
@@ -106,9 +107,8 @@ module top (
   wire [15:0] sram_addr1;
   wire [15:0] sram_wdata0;
   wire [15:0] sram_wdata1;
-  wire [15:0] sram_rdata0;
-  wire [15:0] sram_rdata1;
   // SRAM multiplexer generic outputs
+  wire [15:0] sram_rdata;
   wire sram_valid;
   wire sram_busy;
 
@@ -140,24 +140,21 @@ module top (
     .rd0(sram_rd0),
     .addr0(sram_addr0),
     .wdata0(sram_wdata0),
-    .rdata0(sram_rdata0),
     .req1(sram_req1),
     .wr1(sram_wr1),
     .rd1(sram_rd1),
     .addr1(sram_addr1),
     .wdata1(sram_wdata1),
-    .rdata1(sram_rdata1),
+    .rdata(sram_rdata),
     .valid(sram_valid),
     .busy(sram_busy),
     .sram_addr_io(SRAM_A),
     .sram_data_io(SRAM_D),
     .sram_we_n_io(SRAM_WR),
+    .sram_oe_n_io(SRAM_OE),
     .sram_adsc_n_io(SRAM_STROBE),
     .sram_clk_io(SRAM_CLK)
   );
-
-  // XXX: SRAM OE is always low (active), SRAM controller does not use it, could be changed later
-  assign SRAM_OE = 1'b0;
 
   // CDC bridge from 50 MHz control to 125 MHz SRAM (port0)
   sram_uart_cdc_bridge sram_uart_cdc (
@@ -178,7 +175,7 @@ module top (
     .s_rd_req(sram_rd0),
     .s_addr(sram_addr0),
     .s_wdata(sram_wdata0),
-    .s_rdata(sram_rdata0),
+    .s_rdata(sram_rdata),
     .s_valid(sram_valid)
   );
 
@@ -220,7 +217,7 @@ module top (
     .s_rd_req(sram_rd1),
     .s_addr(sram_addr1),
     .s_wdata(sram_wdata1),
-    .s_rdata(sram_rdata1),
+    .s_rdata(sram_rdata),
     .s_valid(sram_valid),
     .s_busy(sram_busy)
   );

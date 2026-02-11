@@ -124,8 +124,7 @@ module gdp_interface (
             if (spec[7] == 1'b1) begin
               // support only read operation from interconnect registers
               if (spec[6] == 1'b0) begin
-                if (addr_low == 8'h02)
-                  acd_out <= 16'h0001;  // IPC state, always mark that local IPC arrived
+                if (addr_low == 8'h02) acd_out <= 16'h0001;  // IPC state, always mark that local IPC arrived
                 else if (addr_low == 8'h00) acd_out <= 16'h0001;  // processor ID
                 else acd_out <= 16'h0000;  // default
                 acd_oe <= 1'b1;

@@ -94,7 +94,7 @@ def main():
                 print(f"\nError reading 0x{log_addr:04X}: Timeout or partial data ({response.hex()})")
                 sys.exit(1)
 
-            out_op, spec, access_addr, ack_op = struct.unpack('>BBHB', response)
+            out_op, access_addr, spec, ack_op = struct.unpack('>BHBB', response)
             if out_op != 0x02 or ack_op != 0x01:
                 print(f"\nError reading 0x{log_addr:04X}: response = {response.hex()}")
                 sys.exit(1)
