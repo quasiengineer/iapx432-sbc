@@ -70,6 +70,11 @@ module sram_gdp_cdc_bridge (
 
   // also need to trigger SRAM access when address is changed with active request signal
   wire trigger_sram_access = (gdp_req_sync2 & ~gdp_req_sync3) || ((gdp_addr_sync2 != gdp_addr_sync1) & gdp_req_sync3);
+  reg trigger_sram_access_reg;
+  always @(posedge s_clk or negedge s_rst_n) begin
+      if (~s_rst_n) trigger_sram_access_reg <= 0;
+      else          trigger_sram_access_reg <= trigger_sram_access;
+  end
 
   reg [15:0] data_out_int;
   reg is_read;
@@ -86,7 +91,7 @@ module sram_gdp_cdc_bridge (
       s_wr_req <= 0;
       s_rd_req <= 0;
 
-      if (trigger_sram_access) begin
+      if (trigger_sram_access_reg) begin
         s_addr <= gdp_addr_sync1;
         s_wr_req <= gdp_wr_sync2;
         s_rd_req <= gdp_rd_sync2;

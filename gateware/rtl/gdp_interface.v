@@ -41,7 +41,6 @@ module gdp_interface (
   reg acd_oe;
   reg [15:0] acd_out;
 
-  reg [3:0] state;
   reg [7:0] addr_low;
   reg [7:0] spec;
   reg [4:0] init_cnt;
@@ -51,11 +50,18 @@ module gdp_interface (
   reg [15:0] interconn_reg;
   reg interconn_reg_read;
 
-  // for multi-word transfers
+  // for SRAM transfers
   reg [2:0] sram_transfer_cnt;
   reg sram_transfer_read;
+  reg sram_transfer_write;
 
-  localparam IDLE = 0, T2_STATE = 1, T3_STATE = 2, HOLD_INIT = 3, RECORD_FATAL = 4;
+  reg [3:0] state;
+  localparam IDLE = 3'd0,
+             T2_STATE = 3'd1,
+             T3_STATE_READ = 3'd2,
+             T3_STATE_WRITE = 3'd3,
+             HOLD_INIT = 3'd4,
+             RECORD_FATAL = 3'd5;
 
   // rise of CLKB is in the middle of CLKA high period
   always @(posedge clkb or negedge rst_n)
@@ -76,6 +82,7 @@ module gdp_interface (
       fatal_recorded <= 1'b0;
       sram_transfer_cnt <= 3'b0;
       sram_transfer_read <= 1'b0;
+      sram_transfer_write <= 1'b0;
       interconn_reg_read <= 1'b0;
       interconn_reg <= 16'b0;
     end
@@ -104,6 +111,7 @@ module gdp_interface (
               addr_low <= acd_in[7:0];
               sram_req <= 1'b1;
               sram_transfer_read <= 1'b0;
+              sram_transfer_write <= 1'b0;
               interconn_reg_read <= 1'b0;
               state <= T2_STATE;
             end
@@ -144,15 +152,15 @@ module gdp_interface (
               end
             end
             else begin
+              // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
+              //   we also support only 16-bit memory space, so we don't care about high portion of address
+              sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]};
+
               if (spec[6] == 1'b1) begin
-                // TODO: implement write access
+                sram_transfer_write <= 1'b1;
               end
               else begin
                 // TODO: support 1-byte accesses
-
-                // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
-                //   we also support only 16-bit memory space, so we don't care about high portion of address
-                sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]};
                 sram_rd <= 1'b1;
                 sram_transfer_cnt <= spec[4:2] - 1'b1;
                 sram_transfer_read <= 1'b1;
@@ -164,11 +172,11 @@ module gdp_interface (
             log_addr <= {acd_in[7:0], addr_low[7:0]};
             log_type <= spec;
 
-            state <= T3_STATE;
+            state <= spec[6] == 1'b1 ? T3_STATE_WRITE : T3_STATE_READ;
           end
         end
 
-        T3_STATE: begin
+        T3_STATE_READ: begin
           if (interconn_reg_read) begin
             acd_out <= interconn_reg;
             acd_oe  <= 1'b1;
@@ -186,10 +194,22 @@ module gdp_interface (
           end
 
           if (!sram_transfer_read || sram_transfer_cnt == 4'd0) begin
-            // due Tv/Tvo states ICS represents bus error
+            // due Tv/Tvo states ICS represents bus error, so need to drive it low
             ics_io <= 1'b0;
             state  <= IDLE;
           end
+        end
+
+        T3_STATE_WRITE: begin
+          // TODO: support write operations for other lengths than 2 bytes
+          if (sram_transfer_write) begin
+            sram_wr    <= 1'b1;
+            sram_wdata <= acd_in;
+          end
+
+          // due Tv/Tvo states ICS represents bus error, so need to drive it low
+          ics_io     <= 1'b0;
+          state      <= IDLE;
         end
 
         HOLD_INIT: begin

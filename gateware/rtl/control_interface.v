@@ -221,7 +221,8 @@ module control_interface (
             CMD_IN_SRAM_WRITE: begin
               sram_wdata <= in_cmd_value[15:0];
               sram_wr    <= 1;
-              sram_addr  <= in_cmd_addr;
+              // address is byte address, not word address
+              sram_addr <= {1'b0, in_cmd_addr[15:1]};
               in_state   <= CMD_STATE_FINISHED;
             end
 
@@ -230,7 +231,8 @@ module control_interface (
               case (in_cmd_state)
                 SRAM_RD_REQ: begin
                   if (!sram_busy) begin
-                    sram_addr <= in_cmd_addr;
+                    // address is byte address, not word address
+                    sram_addr <= {1'b0, in_cmd_addr[15:1]};
                     sram_rd <= 1;
                     in_cmd_state <= SRAM_RD_READ;
                   end
