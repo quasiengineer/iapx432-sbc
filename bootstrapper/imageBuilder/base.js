@@ -1,4 +1,4 @@
-let maxAddr = 0;
+let maxWrittenAddr = 0;
 
 const write32bit = (image, addr, value) => {
   // least significant byte at lowest address
@@ -7,17 +7,10 @@ const write32bit = (image, addr, value) => {
   image[addr + 1] = (value >> 8) & 0xFF;
   image[addr + 0] = value & 0xFF;
 
-  maxAddr = Math.max(maxAddr, addr + 3);
-};
-
-const buildImage = () => {
-  const image = new Uint8Array(65536);
-
-  write32bit(image, 0x18, 0x12345678);
-
-  return image.slice(0, maxAddr + 1);
+  maxWrittenAddr = Math.max(maxWrittenAddr, addr + 3);
 };
 
 export {
-  buildImage,
+  write32bit,
+  maxWrittenAddr,
 };

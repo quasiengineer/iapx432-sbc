@@ -1,6 +1,6 @@
 import { sbc_bulkWrite, sbc_openPort, sbc_ping, sbc_closePort, sbc_startGdp, sbc_readLog, sbc_readRAM } from './sbc.js';
-import { printAccessLogEntry } from './format.js';
-import { buildImage } from './image.js';
+import { printAccessLogEntry, toHex } from './format.js';
+import { buildImage } from './imageBuilder/image.js';
 
 const PING_RETRIES = 5;
 
@@ -30,6 +30,16 @@ const main = async () => {
   const image = buildImage();
   await sbc_bulkWrite(image);
   console.log(`ROM image has been written to SBC, size = ${image.length} bytes`);
+
+  // print hex dump of first 256 bytes
+  console.log('First 256 bytes of image:');
+  for (let i = 0; i < image.length; i += 16) {
+    let line = '';
+    for (let j = 0; j < 16 && (i + j) < image.length; j++) {
+      line += toHex(image[i + j], 2) + ' ';
+    }
+    console.log(toHex(i, 4) + ': ' + line);
+  }
 
   await sbc_startGdp();
   console.log('GDP has been started');
