@@ -52,7 +52,7 @@ module control_interface (
   );
 
   // output command opcodes
-  localparam CMD_OUT_ACK = 8'h01, CMD_OUT_RESULT = 8'h02, CMD_OUT_ERR = 8'hFF;
+  localparam CMD_OUT_ACK = 8'h01, CMD_OUT_ERR = 8'hFF;
 
   // input command opcodes
   localparam CMD_IN_SRAM_BULK_WRITE = 8'h01,
@@ -74,12 +74,10 @@ module control_interface (
   // FSM for READ_DATA command
   localparam SRAM_RD_REQ = 4'd0,
              SRAM_RD_READ = 4'd1,
-             SRAM_RD_OPCODE = 4'd2,
-             SRAM_RD_OPCODE_GAP = 4'd3,
-             SRAM_RD_DATA_HI = 4'd4,
-             SRAM_RD_DATA_HI_GAP = 4'd5,
-             SRAM_RD_DATA_LO = 4'd6,
-             SRAM_RD_DATA_LO_GAP = 4'd7;
+             SRAM_RD_DATA_HI = 4'd2,
+             SRAM_RD_DATA_HI_GAP = 4'd3,
+             SRAM_RD_DATA_LO = 4'd4,
+             SRAM_RD_DATA_LO_GAP = 4'd5;
 
   // FSM for WRITE_DUMP command
   localparam SRAM_BLKWR_READ_WORD = 4'd0,
@@ -87,15 +85,13 @@ module control_interface (
              SRAM_BLKWR_NEXT_WORD = 4'd2;
 
   // FSM for LOG_RD
-  localparam LOG_RD_REQ       = 5'd0,
-             LOG_RD_OPCODE    = 5'd1,
-             LOG_RD_OPCODE_GAP= 5'd2,
-             LOG_RD_TYPE      = 5'd3,
-             LOG_RD_TYPE_GAP  = 5'd4,
-             LOG_RD_ADDR_HI   = 5'd5,
-             LOG_RD_ADDR_HI_GAP = 5'd6,
-             LOG_RD_ADDR_LO   = 5'd7,
-             LOG_RD_ADDR_LO_GAP = 5'd8;
+  localparam LOG_RD_REQ         = 5'd0,
+             LOG_RD_TYPE        = 5'd1,
+             LOG_RD_TYPE_GAP    = 5'd2,
+             LOG_RD_ADDR_HI     = 5'd3,
+             LOG_RD_ADDR_HI_GAP = 5'd4,
+             LOG_RD_ADDR_LO     = 5'd5,
+             LOG_RD_ADDR_LO_GAP = 5'd6;
 
   reg [ 2:0] in_state;
   reg [ 4:0] in_cmd_state;
@@ -243,21 +239,8 @@ module control_interface (
                 SRAM_RD_READ: begin
                   if (sram_data_valid) begin
                     sram_rd_data <= sram_rdata;
-                    in_cmd_state <= SRAM_RD_OPCODE;
+                    in_cmd_state <= SRAM_RD_DATA_HI;
                   end
-                end
-
-                SRAM_RD_OPCODE: begin
-                  if (!uart_tx_busy) begin
-                    uart_tx_data <= CMD_OUT_RESULT;
-                    uart_tx_req  <= 1;
-                    in_cmd_state <= SRAM_RD_OPCODE_GAP;
-                  end
-                end
-
-                SRAM_RD_OPCODE_GAP: begin
-                  uart_tx_req  <= 0;
-                  in_cmd_state <= SRAM_RD_DATA_HI;
                 end
 
                 SRAM_RD_DATA_HI: begin
@@ -295,17 +278,6 @@ module control_interface (
                   u_log_addr <= in_cmd_addr[9:0];
                   u_log_rd <= 1;
                   log_rd_valid <= 1'b0;
-                  in_cmd_state <= LOG_RD_OPCODE;
-                end
-                LOG_RD_OPCODE: begin
-                  if (!uart_tx_busy) begin
-                    uart_tx_data <= CMD_OUT_RESULT;
-                    uart_tx_req  <= 1;
-                    in_cmd_state <= LOG_RD_OPCODE_GAP;
-                  end
-                end
-                LOG_RD_OPCODE_GAP: begin
-                  uart_tx_req  <= 0;
                   in_cmd_state <= LOG_RD_TYPE;
                 end
                 LOG_RD_TYPE: begin

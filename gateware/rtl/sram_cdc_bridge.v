@@ -1,17 +1,17 @@
-module sram_uart_cdc_bridge (
-  // UART Domain (slow)
-  input  wire        u_clk,
-  input  wire        u_rst_n,
-  input  wire        u_req,
-  input  wire        u_wr_req,  // Pulse
-  input  wire        u_rd_req,  // Pulse
-  input  wire [15:0] u_addr,
-  input  wire [15:0] u_wdata,
-  output reg  [15:0] u_rdata,
-  output reg         u_done,    // Pulse when operation finishes
-  output reg         u_busy,    // High during operation
+module sram_cdc_bridge (
+  // Target domain (slow)
+  input  wire        tgt_clk,
+  input  wire        tgt_rst_n,
+  input  wire        tgt_req,
+  input  wire        tgt_wr_req,  // Pulse
+  input  wire        tgt_rd_req,  // Pulse
+  input  wire [15:0] tgt_addr,
+  input  wire [15:0] tgt_wdata,
+  output reg  [15:0] tgt_rdata,
+  output reg         tgt_done,    // Pulse when operation finishes
+  output reg         tgt_busy,    // High during operation
 
-  // SRAM Domain (fast)
+  // SRAM domain (fast)
   input  wire        s_clk,
   input  wire        s_rst_n,
   output reg         s_req,
@@ -24,47 +24,46 @@ module sram_uart_cdc_bridge (
 );
 
   // ============================================================
-  // 1. UART -> SRAM (Request Path)
+  // 1. Target -> SRAM (Request Path)
   // ============================================================
   reg req_toggle_u;
   reg req_meta_s, req_sync_s, req_prev_s;
 
-  reg [15:0] u_addr_hold;
-  reg [15:0] u_wdata_hold;
-  reg        u_is_read_hold;
+  reg [15:0] tgt_addr_hold;
+  reg [15:0] tgt_wdata_hold;
+  reg        tgt_is_read_hold;
 
-  // UART Side
-  always @(posedge u_clk or negedge u_rst_n) begin
-    if (!u_rst_n) begin
-      u_busy <= 0;
+  always @(posedge tgt_clk or negedge tgt_rst_n) begin
+    if (!tgt_rst_n) begin
+      tgt_busy <= 0;
       req_toggle_u <= 0;
-      u_addr_hold <= 0;
-      u_wdata_hold <= 0;
-      u_is_read_hold <= 0;
+      tgt_addr_hold <= 0;
+      tgt_wdata_hold <= 0;
+      tgt_is_read_hold <= 0;
     end
     else begin
-      if (u_done) begin
-        u_busy <= 0;
+      if (tgt_done) begin
+        tgt_busy <= 0;
       end
-      else if ((u_wr_req || u_rd_req) && !u_busy) begin
-        u_busy <= 1;
-        u_addr_hold <= u_addr;
-        u_wdata_hold <= u_wdata;
-        u_is_read_hold <= u_rd_req;
+      else if ((tgt_wr_req || tgt_rd_req) && !tgt_busy) begin
+        tgt_busy <= 1;
+        tgt_addr_hold <= tgt_addr;
+        tgt_wdata_hold <= tgt_wdata;
+        tgt_is_read_hold <= tgt_rd_req;
         req_toggle_u <= ~req_toggle_u;
       end
     end
   end
 
 
-  // regular 2-FF synchronizer for u_req
+  // regular 2-FF synchronizer for tgt_req
   reg req_sync0, req_sync1;
   always @(posedge s_clk or negedge s_rst_n) begin
     if (!s_rst_n) begin
       s_req <= 0;
     end
     else begin
-      req_sync0 <= u_req;
+      req_sync0 <= tgt_req;
       req_sync1 <= req_sync0;
       s_req <= req_sync1;
     end
@@ -90,16 +89,16 @@ module sram_uart_cdc_bridge (
       s_rd_req <= 0;
 
       if (req_sync_s != req_prev_s) begin
-        s_addr  <= u_addr_hold;
-        s_wdata <= u_wdata_hold;
-        if (u_is_read_hold) s_rd_req <= 1;
+        s_addr  <= tgt_addr_hold;
+        s_wdata <= tgt_wdata_hold;
+        if (tgt_is_read_hold) s_rd_req <= 1;
         else s_wr_req <= 1;
       end
     end
   end
 
   // ============================================================
-  // 2. SRAM -> UART (Response Path)
+  // 2. SRAM -> Target (Response Path)
   // ============================================================
   reg data_valid_toggle_s;
   reg data_valid_sync0, data_valid_sync1, data_valid_sync2;
@@ -119,26 +118,25 @@ module sram_uart_cdc_bridge (
     end
   end
 
-  // UART Side
-  always @(posedge u_clk or negedge u_rst_n) begin
-    if (!u_rst_n) begin
+  // Target side
+  always @(posedge tgt_clk or negedge tgt_rst_n) begin
+    if (!tgt_rst_n) begin
       data_valid_sync0 <= 0;
       data_valid_sync1 <= 0;
       data_valid_sync2 <= 0;
-      u_done <= 0;
-      u_rdata <= 0;
+      tgt_done <= 0;
+      tgt_rdata <= 0;
     end
     else begin
       data_valid_sync0 <= data_valid_toggle_s;
       data_valid_sync1 <= data_valid_sync0;
       data_valid_sync2 <= data_valid_sync1;
 
-      u_done <= 0;
+      tgt_done <= 0;
       if (data_valid_sync1 != data_valid_sync2) begin
-        u_rdata <= s_rdata_hold;
-        u_done  <= 1;
+        tgt_rdata <= s_rdata_hold;
+        tgt_done  <= 1;
       end
     end
   end
-
 endmodule

@@ -86,16 +86,16 @@ def main():
 
         # read log
         for log_addr in range(1 << 10):
-            # Cmd 0x11 <AH> <AL> -> Expects 5 bytes back
+            # Cmd 0x11 <AH> <AL> -> Expects 4 bytes back
             packet = struct.pack('>BH', 0x11, log_addr)
             ser.write(packet)
-            response = ser.read(5)
-            if len(response) != 5:
+            response = ser.read(4)
+            if len(response) != 4:
                 print(f"\nError reading 0x{log_addr:04X}: Timeout or partial data ({response.hex()})")
                 sys.exit(1)
 
-            out_op, access_addr, spec, ack_op = struct.unpack('>BHBB', response)
-            if out_op != 0x02 or ack_op != 0x01:
+            access_addr, spec, ack_op = struct.unpack('>BHBB', response)
+            if ack_op != 0x01:
                 print(f"\nError reading 0x{log_addr:04X}: response = {response.hex()}")
                 sys.exit(1)
 

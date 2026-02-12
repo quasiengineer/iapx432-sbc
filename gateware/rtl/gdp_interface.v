@@ -20,10 +20,8 @@ module gdp_interface (
   output reg sram_wr,
   output reg sram_rd,
   output reg sram_req,
-  output reg [15:0] sram_rdata,
-  input [15:0] sram_wdata,
-  input sram_busy,
-  input sram_data_valid,
+  output reg [15:0] sram_wdata,
+  input [15:0] sram_rdata,
 
   // Access log writer (same clock domain)
   output reg        log_wr,
@@ -49,6 +47,14 @@ module gdp_interface (
   reg [4:0] init_cnt;
   reg fatal_recorded;
 
+  // IPC register access
+  reg [15:0] interconn_reg;
+  reg interconn_reg_read;
+
+  // for multi-word transfers
+  reg [2:0] sram_transfer_cnt;
+  reg sram_transfer_read;
+
   localparam IDLE = 0, T2_STATE = 1, T3_STATE = 2, HOLD_INIT = 3, RECORD_FATAL = 4;
 
   // rise of CLKB is in the middle of CLKA high period
@@ -63,11 +69,15 @@ module gdp_interface (
       sram_wr <= 1'b0;
       sram_rd <= 1'b0;
       sram_req <= 1'b0;
-      sram_rdata <= 16'b0;
+      sram_wdata <= 16'b0;
       addr_low <= 8'b0;
       spec <= 8'b0;
       init_cnt <= 5'b0;
       fatal_recorded <= 1'b0;
+      sram_transfer_cnt <= 3'b0;
+      sram_transfer_read <= 1'b0;
+      interconn_reg_read <= 1'b0;
+      interconn_reg <= 16'b0;
     end
     else begin
       log_wr  <= 1'b0;
@@ -93,6 +103,8 @@ module gdp_interface (
               spec <= acd_in[15:8];
               addr_low <= acd_in[7:0];
               sram_req <= 1'b1;
+              sram_transfer_read <= 1'b0;
+              interconn_reg_read <= 1'b0;
               state <= T2_STATE;
             end
 
@@ -124,22 +136,26 @@ module gdp_interface (
             if (spec[7] == 1'b1) begin
               // support only read operation from interconnect registers
               if (spec[6] == 1'b0) begin
-                if (addr_low == 8'h02) acd_out <= 16'h0001;  // IPC state, always mark that local IPC arrived
-                else if (addr_low == 8'h00) acd_out <= 16'h0001;  // processor ID
-                else acd_out <= 16'h0000;  // default
-                acd_oe <= 1'b1;
+                if (addr_low == 8'h02)
+                  interconn_reg <= 16'h0001;  // IPC state, always mark that local IPC arrived
+                else if (addr_low == 8'h00) interconn_reg <= 16'h0001;  // processor ID
+                else interconn_reg <= 16'h0000;  // default
+                interconn_reg_read <= 1'b1;
               end
             end
             else begin
-              // TODO: need to support data length (spec[4:2])
               if (spec[6] == 1'b1) begin
                 // TODO: implement write access
               end
               else begin
-                // TODO: read data from SRAM
-                // XXX: we support only 16-bit memory space, so we don't care about high portion of address
-                acd_out <= 16'h0000; // default
-                acd_oe <= 1'b1;
+                // TODO: support 1-byte accesses
+
+                // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
+                //   we also support only 16-bit memory space, so we don't care about high portion of address
+                sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]};
+                sram_rd <= 1'b1;
+                sram_transfer_cnt <= spec[4:2] - 1'b1;
+                sram_transfer_read <= 1'b1;
               end
             end
 
@@ -153,9 +169,27 @@ module gdp_interface (
         end
 
         T3_STATE: begin
-          // due Tv/Tvo states ICS represents bus error
-          ics_io <= 1'b0;
-          state  <= IDLE;
+          if (interconn_reg_read) begin
+            acd_out <= interconn_reg;
+            acd_oe  <= 1'b1;
+          end
+
+          if (sram_transfer_read) begin
+            acd_out <= sram_rdata;
+            acd_oe  <= 1'b1;
+
+            if (sram_transfer_cnt) begin
+              sram_transfer_cnt <= sram_transfer_cnt - 1'b1;
+              sram_addr         <= sram_addr + 1'b1;
+              sram_rd           <= 1'b1;
+            end
+          end
+
+          if (!sram_transfer_read || sram_transfer_cnt == 4'd0) begin
+            // due Tv/Tvo states ICS represents bus error
+            ics_io <= 1'b0;
+            state  <= IDLE;
+          end
         end
 
         HOLD_INIT: begin

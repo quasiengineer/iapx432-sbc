@@ -129,8 +129,6 @@ module top (
   wire [15:0] sram_g_addr;
   wire [15:0] sram_g_wdata;
   wire [15:0] sram_g_rdata;
-  wire sram_g_valid;
-  wire sram_g_busy;
 
   sram_mux sram_ctrl (
     .clk(sram_ctrl_clk),
@@ -157,17 +155,17 @@ module top (
   );
 
   // CDC bridge from 50 MHz control to 125 MHz SRAM (port0)
-  sram_uart_cdc_bridge sram_uart_cdc (
-    .u_clk(clk_50),
-    .u_rst_n(rst_n),
-    .u_req(sram_u_req),
-    .u_wr_req(sram_u_wr),
-    .u_rd_req(sram_u_rd),
-    .u_addr(sram_u_addr),
-    .u_wdata(sram_u_wdata),
-    .u_rdata(sram_u_rdata),
-    .u_done(sram_u_valid),
-    .u_busy(sram_u_busy),
+  sram_cdc_bridge sram_uart_cdc (
+    .tgt_clk(clk_50),
+    .tgt_rst_n(rst_n),
+    .tgt_req(sram_u_req),
+    .tgt_wr_req(sram_u_wr),
+    .tgt_rd_req(sram_u_rd),
+    .tgt_addr(sram_u_addr),
+    .tgt_wdata(sram_u_wdata),
+    .tgt_rdata(sram_u_rdata),
+    .tgt_done(sram_u_valid),
+    .tgt_busy(sram_u_busy),
     .s_clk(sram_ctrl_clk),
     .s_rst_n(rst_n),
     .s_req(sram_req0),
@@ -201,6 +199,8 @@ module top (
     .gdp_trigger_init(gdp_trigger_init)
   );
 
+  // CDC bridge from 5 MHz GDP to 125 MHz SRAM (port0), it's faster CDC because it doesn't work on slow clock at all
+  //   it assumes that GDP clock is derived from 125 MHz clock, so we can avoid FF synchronization
   sram_gdp_cdc_bridge sram_gdp_cdc (
     .gdp_req(sram_g_req),
     .gdp_wr_req(sram_g_wr),
@@ -208,8 +208,6 @@ module top (
     .gdp_addr(sram_g_addr),
     .gdp_wdata(sram_g_wdata),
     .gdp_rdata(sram_g_rdata),
-    .gdp_done(sram_g_valid),
-    .gdp_busy(sram_g_busy),
     .s_clk(sram_ctrl_clk),
     .s_rst_n(rst_n),
     .s_req(sram_req1),
@@ -218,8 +216,7 @@ module top (
     .s_addr(sram_addr1),
     .s_wdata(sram_wdata1),
     .s_rdata(sram_rdata),
-    .s_valid(sram_valid),
-    .s_busy(sram_busy)
+    .s_valid(sram_valid)
   );
 
   // GDP wiring
@@ -244,8 +241,6 @@ module top (
     .sram_addr(sram_g_addr),
     .sram_rdata(sram_g_rdata),
     .sram_wdata(sram_g_wdata),
-    .sram_busy(sram_g_busy),
-    .sram_data_valid(sram_g_valid),
     .log_wr(log_wr),
     .log_type(log_type),
     .log_addr(log_addr),
