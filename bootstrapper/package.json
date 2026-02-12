@@ -1,0 +1,14 @@
+{
+  "name": "i432-bootstrapper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "keywords": [],
+  "author": "Mark Ablovatskii",
+  "license": "ISC",
+  "packageManager": "pnpm@10.29.2",
+  "dependencies": {
+    "serialport": "^13.0.0"
+  },
+  "type": "module"
+}
