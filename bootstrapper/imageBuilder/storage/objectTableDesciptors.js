@@ -1,7 +1,9 @@
-import { write32bit } from './base.js';
+import { write32bit, read32bit } from './base.js';
 
-const SEGMENT_TYPE = {
-  // access segments
+export const SEGMENT_DESCRIPTOR_SIZE = 16;
+
+export const SEGMENT_TYPE = {
+  // access segments (to keep pointers to other objects)
   GENERIC_ACCESS:       0b00000,
   DOMAIN_ACCESS:        0b00010,
   CONTEXT_ACCESS:       0b00100,
@@ -36,7 +38,7 @@ const PROCESSOR_CLASS = {
 const GDP_SEGMENT_TYPES_ACCESS = [SEGMENT_TYPE.PROCESSOR_ACCESS, SEGMENT_TYPE.PROCESS_ACCESS, SEGMENT_TYPE.CONTEXT_ACCESS];
 const GDP_SEGMENT_TYPES_DATA = [SEGMENT_TYPE.PROCESSOR_DATA, SEGMENT_TYPE.PROCESS_DATA, SEGMENT_TYPE.CONTEXT_DATA, SEGMENT_TYPE.OPERAND_STACK_DATA, SEGMENT_TYPE.INSTRUCTION_DATA];
 
-const writeStorageDescriptor = (image, desciptorAddr, descriptor) => {
+export const writeObjectTableDescriptor = (image, desciptorAddr, descriptor) => {
   const { isAccess, address, length, type } = descriptor;
 
   const GDPSegmentTypes = isAccess ? GDP_SEGMENT_TYPES_ACCESS : GDP_SEGMENT_TYPES_DATA;
@@ -69,8 +71,7 @@ const writeStorageDescriptor = (image, desciptorAddr, descriptor) => {
   write32bit(image, desciptorAddr + 12, word3);
 };
 
-export {
-  writeStorageDescriptor,
-
-  SEGMENT_TYPE,
+export const updateSegmentAddress = (image, desciptorAddr, address) => {
+  const word0 = read32bit(image, desciptorAddr);
+  write32bit(image, desciptorAddr, (word0 & 0xFF) | (address << 8));
 };

@@ -1,16 +1,30 @@
-import { maxWrittenAddr } from './base.js';
-import { SEGMENT_TYPE, writeStorageDescriptor } from './storageDesciptors.js';
+import { ObjectTableDirectory } from './storage/objectTableDirectory.js';
+import { ObjectTable } from './storage/objectTable.js';
+import { ProcessorAccessSegment } from './objects/processorAccessSegment.js';
+import { ProcessorDataSegment } from './objects/processorDataSegment.js';
 
 const buildImage = () => {
-  const image = new Uint8Array(65536);
+  console.log('Building image...');
 
-  writeStorageDescriptor(
-    image,
-    0x18,
-    { isAccess: false, address: 0x100, length: 256, type: SEGMENT_TYPE.OBJECT_TABLE_DATA },
-  );
+  const processorObjectTable = new ObjectTable('objectTableProcessor');
+  // empty, would not be used
+  const tempObjectDirTable = new ObjectTable('objectTableTemp');
+  const mainObjectTable = new ObjectTable('objectTableMain');
+  const directoryObjectTable = new ObjectTable('objectTableDirectory');
 
-  return image.slice(0, maxWrittenAddr + 1);
+  const objectDirectory = new ObjectTableDirectory(directoryObjectTable);
+  objectDirectory.addObjectTable(processorObjectTable);
+  objectDirectory.addObjectTable(tempObjectDirTable);
+  objectDirectory.addObjectTable(directoryObjectTable);
+  objectDirectory.addObjectTable(mainObjectTable);
+
+  // processors object table contains only processor access segments
+  processorObjectTable.addObject(new ProcessorAccessSegment('processor0access', directoryObjectTable));
+
+  // here is all objects, except processor access segments
+  mainObjectTable.addObject(new ProcessorDataSegment('processor0data'));
+
+  return objectDirectory.serialize();
 };
 
 export {

@@ -1,5 +1,4 @@
 import EventEmitter from 'node:events';
-import { SerialPort } from 'serialport'
 
 const PORT_NAME = '/dev/ttyUSB0';
 const BAUD_RATE = 115200;
@@ -15,83 +14,106 @@ const COMMANDS = {
 
 const ACK_REPLY = 0x01;
 
-const eventBus = new EventEmitter();
-const port = new SerialPort({ path: PORT_NAME, baudRate: BAUD_RATE, autoOpen: false });
+class SBC {
+  #eventBus;
+  #port;
+  #responseBuffer;
 
-const responseBuffer = {
-  remaining: 0,
-  result: [],
-};
+  constructor(SerialPort) {
+    this.#eventBus = new EventEmitter();
+    this.#port = new SerialPort({ path: PORT_NAME, baudRate: BAUD_RATE, autoOpen: false });
+    this.#responseBuffer = {
+      remaining: 0,
+      result: [],
+    };
 
-port.on('data', async (data) => {
-  const { remaining, result} = responseBuffer;
+    this.#port.on('data', async (data) => {
+      const { remaining, result } = this.#responseBuffer;
 
-  if (remaining) {
-    // wait for more data
-    if (remaining >= data.length) {
-      result.push(...data);
-      responseBuffer.remaining -= data.length;
-      return;
-    }
+      if (remaining) {
+        // wait for more data
+        if (remaining >= data.length) {
+          result.push(...data);
+          this.#responseBuffer.remaining -= data.length;
+          return;
+        }
 
-    if (data.length != remaining + 1) {
-      throw new Error('Unexpected data size');
-    }
+        if (data.length != remaining + 1) {
+          throw new Error('Unexpected data size');
+        }
 
-    result.push(...data.subarray(0, remaining));
-    responseBuffer.remaining = 0;
-    if (data[remaining] !== ACK_REPLY) {
-      throw new Error('Expected ACK byte');
-    }
-  } else {
-    if (data.length !== 1 || data[0] !== ACK_REPLY) {
-      throw new Error('Expected only ACK byte');
-    }
+        result.push(...data.subarray(0, remaining));
+        this.#responseBuffer.remaining = 0;
+        if (data[remaining] !== ACK_REPLY) {
+          throw new Error('Expected ACK byte');
+        }
+      } else {
+        if (data.length !== 1 || data[0] !== ACK_REPLY) {
+          throw new Error('Expected only ACK byte');
+        }
+      }
+
+      this.#eventBus.emit('ack');
+    });
   }
 
-  eventBus.emit('ack');
-});
+  sendCommand({ opcode, data, timeout = RESPONSE_TIMEOUT_IN_MS, expectedRespone = 0 }) {
+    return new Promise((resolve, reject) => {
+      let timeoutId = null;
 
+      this.#responseBuffer.result = [];
+      this.#responseBuffer.remaining = expectedRespone;
 
-const sendCommand = (
-  port,
-  { opcode, data, timeout = RESPONSE_TIMEOUT_IN_MS, expectedRespone = 0 },
-) => new Promise((resolve, reject) => {
-  let timeoutId = null;
+      this.#eventBus.once('ack', () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
 
-  responseBuffer.result = [];
-  responseBuffer.remaining = expectedRespone;
+        resolve(this.#responseBuffer.result);
+      });
 
-  eventBus.once('ack', () => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+      this.#port.write(Buffer.from([opcode, ...(data ?? [])]), (err) => err && reject(err));
 
-    resolve(responseBuffer.result);
-  });
-
-  port.write(Buffer.from([opcode, ...(data ?? [])]), (err) => err && reject(err));
-
-  if (timeout) {
-    // don't wait too long for a response
-    timeoutId = setTimeout(() => reject(new Error('Timeout')), timeout);
+      if (timeout) {
+        // don't wait too long for a response
+        timeoutId = setTimeout(() => reject(new Error('Timeout')), timeout);
+      }
+    });
   }
-});
+
+  open() {
+    return new Promise((resolve, reject) => {
+      this.#port.open((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  close() {
+    this.#port.close();
+  }
+}
+
+let sbc;
 
 export async function sbc_ping() {
-  return sendCommand(port, { opcode: COMMANDS.PING });
+  return sbc?.sendCommand({ opcode: COMMANDS.PING });
 };
 
 export async function sbc_startGdp() {
-  return sendCommand(port, { opcode: COMMANDS.START_GDP });
+  return sbc?.sendCommand({ opcode: COMMANDS.START_GDP });
 };
 
 export async function sbc_readLog(addr) {
-  return sendCommand(port, { opcode: COMMANDS.LOG_READ, data: [addr >> 8, addr & 0xFF], expectedRespone: 3 });
+  return sbc?.sendCommand({ opcode: COMMANDS.LOG_READ, data: [addr >> 8, addr & 0xFF], expectedRespone: 3 });
 };
 
 export async function sbc_readRAM(addr) {
-  return sendCommand(port, { opcode: COMMANDS.SRAM_READ, data: [addr >> 8, addr & 0xFF], expectedRespone: 2 });
+  return sbc?.sendCommand({ opcode: COMMANDS.SRAM_READ, data: [addr >> 8, addr & 0xFF], expectedRespone: 2 });
 };
 
 export async function sbc_bulkWrite(data) {
@@ -101,21 +123,16 @@ export async function sbc_bulkWrite(data) {
     writes.push(data[i * 2 + 1], data[i * 2]);
   }
 
-  return sendCommand(port, { opcode: COMMANDS.SRAM_BULK_WRITE, data: [sz >> 8, sz & 0xFF, ...writes], timeout: null });
+  return sbc?.sendCommand({ opcode: COMMANDS.SRAM_BULK_WRITE, data: [sz >> 8, sz & 0xFF, ...writes], timeout: null });
 };
 
 export async function sbc_openPort() {
-  return new Promise((resolve, reject) => {
-    port.open((err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
+  // avoid initialization delays due regular import if we don't need to use the port
+  const { SerialPort } = await import('serialport');
+  sbc = new SBC(SerialPort);
+  await sbc.open();
 };
 
 export function sbc_closePort() {
-  port.close();
+  sbc?.close();
 };

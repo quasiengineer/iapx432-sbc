@@ -1,4 +1,4 @@
-const toHex = (value, sz = 4) => value.toString(16).padStart(sz, '0');
+const toHex = (value, sz = 4, raw = false) => raw ? value.toString(16).padStart(sz, '0') : `0x${value.toString(16).padStart(sz, '0')}`;
 
 const printAccessLogEntry = (logAddr, spec, accessAddr) => {
   const spaceType = (spec >> 7) & 1;
@@ -13,11 +13,11 @@ const printAccessLogEntry = (logAddr, spec, accessAddr) => {
       0xf4: 'GDP initialization',
       0xf0: 'Fatal signal is raised by GDP',
     };
-    console.log(`  0x${toHex(logAddr)}: ${fpgaLogMap[spec] || 'Unknown FPGA log entry'}`);
+    console.log(`  ${toHex(logAddr)}: ${fpgaLogMap[spec] || 'Unknown FPGA log entry'}`);
     return spec === 0xf0;
   }
 
-  const lengthMap = {0: 1, 1: 2, 2: 4, 3: 6, 4: 8, 5: 10};
+  const lengthMap = { 0: 1, 1: 2, 2: 4, 3: 6, 4: 8, 5: 10 };
   const length = lengthMap[lengthCode] || 'invalid';
 
   const spaceStr = spaceType === 1 ? 'Other' : 'Memory';
@@ -28,15 +28,26 @@ const printAccessLogEntry = (logAddr, spec, accessAddr) => {
   if (spaceType === 1) {
     segStr = 'interconnect register';
   } else {
-    const segMap = {0: 'instruction segment', 1: 'stack segment', 2: 'context control segment', 3: 'other'};
+    const segMap = { 0: 'instruction segment', 1: 'stack segment', 2: 'context control segment', 3: 'other' };
     segStr = segMap[modifier] || 'invalid';
   }
 
-  console.log(`  0x${toHex(logAddr)}: spec=0x${toHex(spec, 2)} (${opStr} ${length} bytes in '${spaceStr}' space with ${segStr} access${rmwStr}) addr=0x${toHex(accessAddr)}`);
+  console.log(`  ${toHex(logAddr)}: spec=${toHex(spec, 2)} (${opStr} ${length} bytes in '${spaceStr}' space with ${segStr} access${rmwStr}) addr=0x${toHex(accessAddr)}`);
   return false;
 };
 
+const printHexDump = (image) => {
+  for (let i = 0; i < image.length; i += 16) {
+    let line = '';
+    for (let j = 0; j < 16 && (i + j) < image.length; j++) {
+      line += toHex(image[i + j], 2, true) + ' ';
+    }
+    console.log(toHex(i, 4, true) + ': ' + line);
+  }
+}
+
 export {
+  printHexDump,
   printAccessLogEntry,
   toHex,
 };
