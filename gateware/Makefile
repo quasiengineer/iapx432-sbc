@@ -42,7 +42,7 @@ $(ASC): $(JSON) $(PCF) $(CONSTRAINTS)
 		--report $(REPORT) \
 		--pcf-allow-unconstrained \
 		--Werror \
-		--seed 2 \
+		--seed 3 \
 		2>&1 | tee nextpnr.log; \
 	status=$$?; \
 	if [ "$$status" -ne 0 ]; then \

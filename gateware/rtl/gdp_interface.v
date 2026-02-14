@@ -46,22 +46,22 @@ module gdp_interface (
   reg [4:0] init_cnt;
   reg fatal_recorded;
 
+  reg spec_wr;
+
   // IPC register access
   reg [15:0] interconn_reg;
   reg interconn_reg_read;
 
   // for SRAM transfers
   reg [2:0] sram_transfer_cnt;
-  reg sram_transfer_read;
-  reg sram_transfer_write;
+  reg sram_transfer;
 
   reg [3:0] state;
   localparam IDLE = 3'd0,
              T2_STATE = 3'd1,
-             T3_STATE_READ = 3'd2,
-             T3_STATE_WRITE = 3'd3,
-             HOLD_INIT = 3'd4,
-             RECORD_FATAL = 3'd5;
+             T3_STATE = 3'd2,
+             HOLD_INIT = 3'd3,
+             RECORD_FATAL = 3'd4;
 
   // rise of CLKB is in the middle of CLKA high period
   always @(posedge clkb or negedge rst_n)
@@ -81,8 +81,8 @@ module gdp_interface (
       init_cnt <= 5'b0;
       fatal_recorded <= 1'b0;
       sram_transfer_cnt <= 3'b0;
-      sram_transfer_read <= 1'b0;
-      sram_transfer_write <= 1'b0;
+      sram_transfer <= 1'b0;
+      spec_wr <= 1'b0;
       interconn_reg_read <= 1'b0;
       interconn_reg <= 16'b0;
     end
@@ -108,10 +108,10 @@ module gdp_interface (
               //   bit 7         space (0 = memory, 1 = special)
               // we don't care about RMW flag and modifier (don't know how it has been used)
               spec <= acd_in[15:8];
+              spec_wr <= acd_in[14];
               addr_low <= acd_in[7:0];
               sram_req <= 1'b1;
-              sram_transfer_read <= 1'b0;
-              sram_transfer_write <= 1'b0;
+              sram_transfer <= 1'b0;
               interconn_reg_read <= 1'b0;
               state <= T2_STATE;
             end
@@ -142,8 +142,8 @@ module gdp_interface (
           end
           else begin
             if (spec[7] == 1'b1) begin
-              // support only read operation from interconnect registers
-              if (spec[6] == 1'b0) begin
+              // XXX: support only read operation from interconnect registers
+              if (!spec_wr) begin
                 if (addr_low == 8'h02)
                   interconn_reg <= 16'h0001;  // IPC state, always mark that local IPC arrived
                 else if (addr_low == 8'h00) interconn_reg <= 16'h0001;  // processor ID
@@ -154,17 +154,12 @@ module gdp_interface (
             else begin
               // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
               //   we also support only 16-bit memory space, so we don't care about high portion of address
-              sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]};
-
-              if (spec[6] == 1'b1) begin
-                sram_transfer_write <= 1'b1;
-              end
-              else begin
-                // TODO: support 1-byte accesses
-                sram_rd <= 1'b1;
-                sram_transfer_cnt <= spec[4:2] - 1'b1;
-                sram_transfer_read <= 1'b1;
-              end
+              sram_transfer <= 1'b1;
+              // for write operation we need to decrement address by 1, because write operation one cycle behind
+              // read operation in terms of addressing (we read SRAM on T2, but write on T3)
+              sram_transfer_cnt <= spec[4:2] - (!spec_wr);
+              sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]} - spec_wr;
+              sram_rd <= !spec_wr;
             end
 
             // log access
@@ -172,44 +167,40 @@ module gdp_interface (
             log_addr <= {acd_in[7:0], addr_low[7:0]};
             log_type <= spec;
 
-            state <= spec[6] == 1'b1 ? T3_STATE_WRITE : T3_STATE_READ;
+            state <= T3_STATE;
           end
         end
 
-        T3_STATE_READ: begin
+        T3_STATE: begin
           if (interconn_reg_read) begin
             acd_out <= interconn_reg;
             acd_oe  <= 1'b1;
           end
 
-          if (sram_transfer_read) begin
-            acd_out <= sram_rdata;
-            acd_oe  <= 1'b1;
+          // XXX: handle 1-byte transfers properly
+          if (sram_transfer) begin
+            if (spec_wr) begin
+              sram_wr    <= 1'b1;
+              sram_wdata <= acd_in;
+            end
+            else begin
+              acd_out <= sram_rdata;
+              acd_oe  <= 1'b1;
+            end
 
             if (sram_transfer_cnt) begin
               sram_transfer_cnt <= sram_transfer_cnt - 1'b1;
               sram_addr         <= sram_addr + 1'b1;
-              sram_rd           <= 1'b1;
+              sram_rd           <= !spec_wr;
             end
           end
 
-          if (!sram_transfer_read || sram_transfer_cnt == 4'd0) begin
+          // need to drive ICS earlier for write operations, because actual write performs on next cycle
+          if (!sram_transfer || sram_transfer_cnt == {3'b000, spec_wr}) begin
             // due Tv/Tvo states ICS represents bus error, so need to drive it low
             ics_io <= 1'b0;
             state  <= IDLE;
           end
-        end
-
-        T3_STATE_WRITE: begin
-          // TODO: support write operations for other lengths than 2 bytes
-          if (sram_transfer_write) begin
-            sram_wr    <= 1'b1;
-            sram_wdata <= acd_in;
-          end
-
-          // due Tv/Tvo states ICS represents bus error, so need to drive it low
-          ics_io     <= 1'b0;
-          state      <= IDLE;
         end
 
         HOLD_INIT: begin
