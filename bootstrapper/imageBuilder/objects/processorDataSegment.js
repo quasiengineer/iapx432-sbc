@@ -13,21 +13,29 @@ export class ProcessorDataSegment extends BaseObject {
     }
 
     get size() {
-      return 4;
+      return 72 * 2;
     }
 
     serialize(image, baseAddress) {
-      console.log(`  placing Processor data segment at address ${toHex(baseAddress)}`);
       const word0 =
         0x0               // not locked
-        | (0b0000 << 16)  // processor state, 0000 = Initialization
-        | (0b00 << 20)    // dispatching mode, 00 = normal mode
+        | (0b0000 << 16)  // processor state,
+                          //   0000 = Initialization
+                          //   0001 - Idle
+                          //   0010 - process selection
+                          //   0011 - process binding
+                          //   0100 - process exectuion
+                          //   0101 - process suspension
+        | (0b00 << 20)    // dispatching mode, 00 = normal mode, 01 - alarm mode, 10 - reconfig mode, 11 - diagnostic mode
         | (0b1 << 22)     // stopped by IPC, 0 = non-stopped, should execute a process
         | (0b1 << 23)     // broadcast acceptance mode, 0 = no broadcast message in progress
         | (0x1 << 24)     // processor ID
       ;
 
       write32bit(image, baseAddress, word0);
+
+      // object section [0x40 .. 0x90] is reserved for fault information area, it would be filled by hardware
+
       return this.size;
     }
 }

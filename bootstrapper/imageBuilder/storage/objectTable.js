@@ -36,7 +36,7 @@ export class ObjectTable extends BaseObject {
     return (this.#objects.length + 1) * SEGMENT_DESCRIPTOR_SIZE;
   }
 
-  #serializeToImage(image, baseAddress) {
+  #serializeToImage(image, baseAddress, segments) {
     // skip header
     let address = baseAddress + SEGMENT_DESCRIPTOR_SIZE;
     // put descriptors
@@ -55,7 +55,9 @@ export class ObjectTable extends BaseObject {
     for (const object of this.#objects) {
       // object table directory has reference to itself, so skip it
       if (object !== this) {
-        address += object.serialize(image, address);
+        object.address = address;
+        segments.push({ ref: object.ref, address, size: object.size });
+        address += object.serialize(image, address, segments);
       }
     }
 
@@ -70,11 +72,8 @@ export class ObjectTable extends BaseObject {
     }
   }
 
-  serialize(image, address) {
-    console.log(`  placing object table ${this.ref} at address ${toHex(address)}`);
-
-    this.address = address;
-    const size = this.#serializeToImage(image, address);
+  serialize(image, address, segments) {
+    const size = this.#serializeToImage(image, address, segments);
     this.#fixReferences(image, address);
     return size;
   }

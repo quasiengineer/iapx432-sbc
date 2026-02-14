@@ -20,29 +20,22 @@ export class ProcessorAccessSegment extends BaseObject {
     }
 
     serialize(image, baseAddress) {
-      console.log(`  placing Processor access segment at address ${toHex(baseAddress)}`);
-      this.address = baseAddress;
-
       const mainObjectTableIdx = this.objectDirectory.getObjectIndex('objectTableMain');
+      const directoryObjectTableIdx = this.objectDirectory.getObjectIndex('objectTableDirectory');
+
       const mainObjectTable = this.objectDirectory.objects[mainObjectTableIdx - 1];
 
       const accessDescriptors = [
         // +0x00 processor data segment
-        createAccessDescriptor(
-          mainObjectTableIdx,
-          mainObjectTable.getObjectIndex('processor0data'),
-        ),
+        createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processor0data')),
         // +0x04 current process carrier
         0x0,
         // +0x08 local communication segment
-        0x0,
+        createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processor0localComms')),
         // +0x0C global communication segment
         0x0,
         // +0x10 object table directory
-        createAccessDescriptor(
-          this.objectDirectory.getObjectIndex('objectTableDirectory'),
-          this.objectDirectory.getObjectIndex('objectTableDirectory'),
-        ),
+        createAccessDescriptor(directoryObjectTableIdx, directoryObjectTableIdx),
         // +0x14 processor carrier object
         0x0,
         // +0x18 delay port
