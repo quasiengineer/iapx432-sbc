@@ -30,7 +30,8 @@ module control_interface (
   output reg        u_wlog_rd,
 
   // signals to GDP interface
-  output reg gdp_trigger_init
+  output reg gdp_trigger_init,
+  output reg [15:0] gdp_local_comms_addr
 );
   wire [7:0] uart_rx_data;
   wire uart_rx_valid;
@@ -65,8 +66,8 @@ module control_interface (
              CMD_IN_SRAM_READ = 8'h03,
              CMD_IN_LOG_WR = 8'h10,
              CMD_IN_LOG_RD = 8'h11,
+             CMD_IN_GDP_START = 8'h20,
              CMD_IN_PING = 8'h80,
-             CMD_IN_GDP_START = 8'h81,
              CMD_IN_WLOG_RD = 8'h90;
 
   // common command FSM
@@ -208,7 +209,7 @@ module control_interface (
               3'd0: in_cmd_addr[15:8] <= uart_rx_data;
               3'd1: begin
                 in_cmd_addr[7:0] <= uart_rx_data;
-                if (in_cmd_opcode == CMD_IN_SRAM_READ || in_cmd_opcode == CMD_IN_LOG_RD)
+                if (in_cmd_opcode == CMD_IN_SRAM_READ || in_cmd_opcode == CMD_IN_LOG_RD || in_cmd_opcode == CMD_IN_GDP_START)
                   in_state <= CMD_STATE_READY;
               end
               3'd2: in_cmd_value[15:8] <= uart_rx_data;
@@ -231,10 +232,11 @@ module control_interface (
             // PING 0x80
             CMD_IN_PING: in_state <= CMD_STATE_FINISHED;
 
-            // GDP_START 0x81
+            // GDP_START 0x20 localCommsAddrHi localCommsAddrLo
             CMD_IN_GDP_START: begin
-              gdp_trigger_init <= 1;
-              in_state         <= CMD_STATE_FINISHED;
+              gdp_local_comms_addr <= in_cmd_addr;
+              gdp_trigger_init     <= 1;
+              in_state             <= CMD_STATE_FINISHED;
             end
 
             // READ_WRITE_LOG 0x90
@@ -250,47 +252,47 @@ module control_interface (
                   if (!uart_tx_busy) begin
                     wlog_rd_data <= u_wlog_data_out;
                     uart_tx_data <= u_wlog_data_out[31:24];
-                    uart_tx_req <= 1'b1;
+                    uart_tx_req  <= 1'b1;
                     in_cmd_state <= WLOG_RD_SEND_DATA0_GAP;
                   end
                 end
 
                 WLOG_RD_SEND_DATA0_GAP: begin
-                  u_wlog_addr <= u_wlog_addr + 1'b1;
-                  uart_tx_req <= 1'b0;
+                  u_wlog_addr  <= u_wlog_addr + 1'b1;
+                  uart_tx_req  <= 1'b0;
                   in_cmd_state <= WLOG_RD_SEND_DATA1;
                 end
 
                 WLOG_RD_SEND_DATA1: begin
                   if (!uart_tx_busy) begin
                     uart_tx_data <= wlog_rd_data[23:16];
-                    uart_tx_req <= 1'b1;
+                    uart_tx_req  <= 1'b1;
                     in_cmd_state <= WLOG_RD_SEND_DATA1_GAP;
                   end
                 end
 
                 WLOG_RD_SEND_DATA1_GAP: begin
-                  uart_tx_req <= 1'b0;
+                  uart_tx_req  <= 1'b0;
                   in_cmd_state <= WLOG_RD_SEND_DATA2;
                 end
 
                 WLOG_RD_SEND_DATA2: begin
                   if (!uart_tx_busy) begin
                     uart_tx_data <= wlog_rd_data[15:8];
-                    uart_tx_req <= 1'b1;
+                    uart_tx_req  <= 1'b1;
                     in_cmd_state <= WLOG_RD_SEND_DATA2_GAP;
                   end
                 end
 
                 WLOG_RD_SEND_DATA2_GAP: begin
-                  uart_tx_req <= 1'b0;
+                  uart_tx_req  <= 1'b0;
                   in_cmd_state <= WLOG_RD_SEND_DATA3;
                 end
 
                 WLOG_RD_SEND_DATA3: begin
                   if (!uart_tx_busy) begin
                     uart_tx_data <= wlog_rd_data[7:0];
-                    uart_tx_req <= 1'b1;
+                    uart_tx_req  <= 1'b1;
                     in_cmd_state <= WLOG_RD_CHECK_DONE;
                   end
                 end
@@ -298,10 +300,10 @@ module control_interface (
                 WLOG_RD_CHECK_DONE: begin
                   uart_tx_req <= 1'b0;
                   if (u_wlog_addr == 6'd0) begin
-                    in_state <= CMD_STATE_FINISHED;
+                    in_state  <= CMD_STATE_FINISHED;
                     u_wlog_rd <= 1'b0;
-                  end else
-                    in_cmd_state <= WLOG_RD_SEND_DATA0;
+                  end
+                  else in_cmd_state <= WLOG_RD_SEND_DATA0;
                 end
               endcase
             end

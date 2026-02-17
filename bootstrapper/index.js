@@ -49,6 +49,10 @@ const printAccessLog = async (segments) => {
     const response = await sbc_readLog(logAddr);
     const accessAddr = (response[0] << 8) | response[1];
     const spec = response[2];
+    if (spec === 0x00 && accessAddr === 0x0000) {
+      break;
+    }
+
     printAccessLogEntry(logAddr, spec, accessAddr, segments, writeMap);
     if (spec === 0xF0) {
       break;
@@ -77,7 +81,7 @@ const main = async () => {
   await sbc_bulkWrite(image);
   console.log(`[+] ROM image has been written to SBC, size = ${image.length} bytes`);
 
-  await sbc_startGdp();
+  await sbc_startGdp({ localCommsAddress: segments.find(({ ref }) => ref === 'processorLocalComms').address });
   console.log('[+] GDP has been started');
 
   // wait some time to let GDP work

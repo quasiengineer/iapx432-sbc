@@ -5,11 +5,11 @@ const BAUD_RATE = 2_000_000;
 const RESPONSE_TIMEOUT_IN_MS = 1000; // 1s
 
 const COMMANDS = {
-  PING: 0x80,
-  START_GDP: 0x81,
   SRAM_BULK_WRITE: 0x01,
   SRAM_READ: 0x03,
   LOG_READ: 0x11,
+  START_GDP: 0x20,
+  PING: 0x80,
   WLOG_READ: 0x90,
 };
 
@@ -105,8 +105,11 @@ export async function sbc_ping() {
   return sbc?.sendCommand({ opcode: COMMANDS.PING });
 };
 
-export async function sbc_startGdp() {
-  return sbc?.sendCommand({ opcode: COMMANDS.START_GDP });
+export async function sbc_startGdp({ localCommsAddress }) {
+  return sbc?.sendCommand({
+    opcode: COMMANDS.START_GDP,
+    data: [localCommsAddress >> 8, localCommsAddress & 0xFF],
+  });
 };
 
 export async function sbc_readLog(addr) {

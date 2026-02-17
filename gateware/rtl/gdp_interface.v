@@ -35,7 +35,8 @@ module gdp_interface (
   output reg [15:0] wlog_addr,
 
   // signals from control module
-  input wire trigger_init
+  input wire trigger_init,
+  input wire [15:0] local_comms_addr
 );
 
   assign clr_io = rst_n;
@@ -56,8 +57,12 @@ module gdp_interface (
   reg spec_wr;
 
   // IPC register access
+  reg [2:0] interconn_req_cnt;
   reg [15:0] interconn_reg;
   reg interconn_reg_read;
+
+  localparam IPC_MESSAGE_ENTER_NORMAL_MODE = 16'd4;
+  localparam IPC_MESSAGE_START_PROCESSOR = 16'd14;
 
   // for SRAM transfers
   reg [2:0] sram_transfer_cnt;
@@ -68,8 +73,9 @@ module gdp_interface (
              T2_STATE = 3'd1,
              T3_STATE = 3'd2,
              T3_STATE_WRITE_BYTE = 3'd3,
-             HOLD_INIT = 3'd4,
-             RECORD_FATAL = 3'd5;
+             T3_STATE_UPDATE_IPC_DATA = 3'd4,
+             HOLD_INIT = 3'd5,
+             RECORD_FATAL = 3'd6;
 
   // rise of CLKB is in the middle of CLKA high period
   always @(posedge clkb or negedge rst_n)
@@ -94,6 +100,7 @@ module gdp_interface (
       interconn_reg_read <= 1'b0;
       interconn_reg <= 16'b0;
       log_ref <= 10'b0;
+      interconn_req_cnt <= 3'b0;
     end
     else begin
       log_wr  <= 1'b0;
@@ -156,8 +163,13 @@ module gdp_interface (
             if (spec[7] == 1'b1) begin
               // XXX: support only read operation from interconnect registers
               if (!spec_wr) begin
-                if (addr_low == 8'h02)
-                  interconn_reg <= 16'h0001;  // IPC state, always mark that local IPC arrived
+                if (addr_low == 8'h02) begin
+                  state <= T3_STATE_UPDATE_IPC_DATA;
+                  // need to reset "semaphore" in local communication segment for processor to let it process IPC
+                  sram_wr <= 1'b1;
+                  sram_addr <= {1'b0, local_comms_addr[15:1]} + 16'd2;
+                  sram_wdata <= 16'h0001;
+                end
                 else if (addr_low == 8'h00) interconn_reg <= 16'h0001;  // processor ID
                 else interconn_reg <= 16'h0000;  // default
                 interconn_reg_read <= 1'b1;
@@ -231,6 +243,20 @@ module gdp_interface (
           wlog_wr <= 1'b1;
           wlog_data <= {8'b0, acd_in[7:0]};
           wlog_addr <= {6'b0, log_ref[9:0]};
+          ics_io <= 1'b0;
+          state <= IDLE;
+        end
+
+        T3_STATE_UPDATE_IPC_DATA: begin
+          // set IPC message in local communication segment for processor
+          sram_wr <= 1'b1;
+          sram_addr <= {1'b0, local_comms_addr[15:1]} + 16'd1;
+          sram_wdata <= interconn_req_cnt == 3'd0 ? IPC_MESSAGE_START_PROCESSOR : IPC_MESSAGE_ENTER_NORMAL_MODE;
+          interconn_req_cnt <= interconn_req_cnt + 1'b1;
+
+          // IPC state, always mark that local IPC arrived
+          acd_out <= 16'h0001;
+          acd_oe  <= 1'b1;
           ics_io <= 1'b0;
           state <= IDLE;
         end

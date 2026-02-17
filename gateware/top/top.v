@@ -223,7 +223,8 @@ module top (
     .u_wlog_addr(u_wlog_addr),
     .u_wlog_rd(u_wlog_rd),
     .u_wlog_data_out(u_wlog_data_out),
-    .gdp_trigger_init(gdp_trigger_init)
+    .gdp_trigger_init(gdp_trigger_init),
+    .gdp_local_comms_addr(gdp_local_comms_addr)
   );
 
   // CDC bridge from 5 MHz GDP to 125 MHz SRAM (port0), it's faster CDC because it doesn't work on slow clock at all
@@ -248,6 +249,7 @@ module top (
 
   // GDP wiring
   reg gdp_trigger_init;
+  reg [15:0] gdp_local_comms_addr;
   gdp_interface gdp (
     .u_clk(clk_50),
     .rst_n(rst_n),
@@ -275,7 +277,8 @@ module top (
     .wlog_wr(wlog_wr),
     .wlog_data(wlog_data),
     .wlog_addr(wlog_addr),
-    .trigger_init(gdp_trigger_init)
+    .trigger_init(gdp_trigger_init),
+    .local_comms_addr(gdp_local_comms_addr)
   );
 
 endmodule
