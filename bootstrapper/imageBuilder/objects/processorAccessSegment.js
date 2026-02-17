@@ -26,17 +26,17 @@ export class ProcessorAccessSegment extends BaseObject {
 
     const accessDescriptors = [
       // +0x00 processor data segment
-      createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processor0data')),
+      createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processorData')),
       // +0x04 current process carrier
       0x0,
       // +0x08 local communication segment
-      createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processor0localComms')),
+      createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processorLocalComms')),
       // +0x0C global communication segment
       0x0,
       // +0x10 object table directory
       createAccessDescriptor(directoryObjectTableIdx, directoryObjectTableIdx),
       // +0x14 processor carrier object
-      0x0,
+      createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processorCarrierAccess')),
       // +0x18 delay port
       createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('delayPortAccess')),
       // +0x1C delay carrier

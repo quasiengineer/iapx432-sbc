@@ -22,15 +22,17 @@ const buildImage = () => {
   objectDirectory.addObjectTable(mainObjectTable);
 
   // processors object table contains only processor access segments
-  processorObjectTable.addObject(new ProcessorAccessSegment('processor0access', { directoryObjectTable }));
+  processorObjectTable.addObject(new ProcessorAccessSegment('processorAccess', { directoryObjectTable }));
 
   // here is all objects, except processor access segments
-  mainObjectTable.addObject(new ProcessorDataSegment('processor0data'));
-  mainObjectTable.addObject(new LocalCommunicationSegment('processor0localComms'));
+  mainObjectTable.addObject(new ProcessorDataSegment('processorData'));
+  mainObjectTable.addObject(new LocalCommunicationSegment('processorLocalComms'));
   mainObjectTable.addObject(new PortDataSegment('delayPortData', { messageQueueSize: 1, portType: PORT_TYPE.DELAY }));
   mainObjectTable.addObject(new PortAccessSegment('delayPortAccess', { directoryObjectTable, messageQueueSize: 1 }));
   mainObjectTable.addObject(new CarrierDataSegment('delayCarrierData', { carrierType: CARRIER_TYPE.PROCESSOR }));
   mainObjectTable.addObject(new CarrierAccessSegment('delayCarrierAccess', { directoryObjectTable }));
+  mainObjectTable.addObject(new CarrierDataSegment('processorCarrierData', { carrierType: CARRIER_TYPE.PROCESSOR }));
+  mainObjectTable.addObject(new CarrierAccessSegment('processorCarrierAccess', { directoryObjectTable }));
 
   const segments = [];
   return { image: objectDirectory.serialize(segments), segments };
