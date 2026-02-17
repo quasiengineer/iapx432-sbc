@@ -76,7 +76,8 @@ module top (
   wire log_wr;
   wire [7:0] log_type;
   wire [15:0] log_addr;
-  bram_log #(
+  wire [9:0] log_wr_ptr;
+  execution_log #(
     .ADDR_WIDTH(10)
   ) log_storage (
     .clk(clk_50),
@@ -91,6 +92,29 @@ module top (
     .log_wr(log_wr),
     .log_type(log_type),
     .log_addr(log_addr),
+    .log_wr_ptr(log_wr_ptr),
+    .trigger_init(gdp_trigger_init)
+  );
+
+  // write log storage
+  wire [5:0]  u_wlog_addr;
+  wire [32:0] u_wlog_data_out;
+  wire u_wlog_rd;
+  wire wlog_wr;
+  wire [15:0] wlog_data;
+  wire [15:0] wlog_addr;
+  write_log #(
+    .ADDR_WIDTH(6)
+  ) wlog_storage (
+    .clk(clk_50),
+    .rst_n(rst_n),
+    .u_addr(u_wlog_addr),
+    .u_rd(u_wlog_rd),
+    .u_data_out(u_wlog_data_out),
+    .log_write_clk(clkb),
+    .log_wr(wlog_wr),
+    .log_data(wlog_data),
+    .log_addr(wlog_addr),
     .trigger_init(gdp_trigger_init)
   );
 
@@ -196,6 +220,9 @@ module top (
     .u_log_data_valid(u_log_data_valid),
     .u_log_wr(u_log_wr),
     .u_log_rd(u_log_rd),
+    .u_wlog_addr(u_wlog_addr),
+    .u_wlog_rd(u_wlog_rd),
+    .u_wlog_data_out(u_wlog_data_out),
     .gdp_trigger_init(gdp_trigger_init)
   );
 
@@ -244,6 +271,10 @@ module top (
     .log_wr(log_wr),
     .log_type(log_type),
     .log_addr(log_addr),
+    .log_wr_ptr(log_wr_ptr),
+    .wlog_wr(wlog_wr),
+    .wlog_data(wlog_data),
+    .wlog_addr(wlog_addr),
     .trigger_init(gdp_trigger_init)
   );
 

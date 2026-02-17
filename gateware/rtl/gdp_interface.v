@@ -27,6 +27,12 @@ module gdp_interface (
   output reg        log_wr,
   output reg [ 7:0] log_type,
   output reg [15:0] log_addr,
+  input wire [ 9:0] log_wr_ptr,
+
+  // Write log writer (same clock domain)
+  output reg        wlog_wr,
+  output reg [15:0] wlog_data,
+  output reg [15:0] wlog_addr,
 
   // signals from control module
   input wire trigger_init
@@ -45,6 +51,7 @@ module gdp_interface (
   reg [7:0] spec;
   reg [4:0] init_cnt;
   reg fatal_recorded;
+  reg [9:0] log_ref;
 
   reg spec_wr;
 
@@ -60,8 +67,9 @@ module gdp_interface (
   localparam IDLE = 3'd0,
              T2_STATE = 3'd1,
              T3_STATE = 3'd2,
-             HOLD_INIT = 3'd3,
-             RECORD_FATAL = 3'd4;
+             T3_STATE_WRITE_BYTE = 3'd3,
+             HOLD_INIT = 3'd4,
+             RECORD_FATAL = 3'd5;
 
   // rise of CLKB is in the middle of CLKA high period
   always @(posedge clkb or negedge rst_n)
@@ -85,9 +93,11 @@ module gdp_interface (
       spec_wr <= 1'b0;
       interconn_reg_read <= 1'b0;
       interconn_reg <= 16'b0;
+      log_ref <= 10'b0;
     end
     else begin
       log_wr  <= 1'b0;
+      wlog_wr <= 1'b0;
       sram_rd <= 1'b0;
       sram_wr <= 1'b0;
       acd_oe  <= 1'b0;
@@ -141,6 +151,8 @@ module gdp_interface (
             state <= IDLE;  // cancel
           end
           else begin
+            state <= T3_STATE;
+
             if (spec[7] == 1'b1) begin
               // XXX: support only read operation from interconnect registers
               if (!spec_wr) begin
@@ -152,22 +164,29 @@ module gdp_interface (
               end
             end
             else begin
-              // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
-              //   we also support only 16-bit memory space, so we don't care about high portion of address
-              sram_transfer <= 1'b1;
-              // for write operation we need to decrement address by 1, because write operation one cycle behind
-              // read operation in terms of addressing (we read SRAM on T2, but write on T3)
-              sram_transfer_cnt <= spec[4:2] - (!spec_wr);
-              sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]} - spec_wr;
-              sram_rd <= !spec_wr;
+              if (spec[4:2] == 3'b000 && spec_wr) begin
+                // need to read RAM first to modify single byte
+                sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]};
+                sram_rd   <= 1'b1;
+                state     <= T3_STATE_WRITE_BYTE;
+              end
+              else begin
+                sram_transfer <= 1'b1;
+                // for write operation we need to decrement address by 1, because write operation one cycle behind
+                // read operation in terms of addressing (we read SRAM on T2, but write on T3)
+                sram_transfer_cnt <= spec[4:2] - (!spec_wr);
+                // XXX: support only 16-bit space, so we don't care about high portion of address
+                // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
+                sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]} - spec_wr;
+                sram_rd <= !spec_wr;
+              end
             end
 
             // log access
-            log_wr <= 1'b1;
+            log_wr   <= 1'b1;
             log_addr <= {acd_in[7:0], addr_low[7:0]};
             log_type <= spec;
-
-            state <= T3_STATE;
+            log_ref  <= log_wr_ptr;
           end
         end
 
@@ -177,11 +196,14 @@ module gdp_interface (
             acd_oe  <= 1'b1;
           end
 
-          // XXX: handle 1-byte transfers properly
+          // TODO: support 1-byte reads properly
           if (sram_transfer) begin
             if (spec_wr) begin
               sram_wr    <= 1'b1;
               sram_wdata <= acd_in;
+              wlog_wr <= 1'b1;
+              wlog_data <= acd_in;
+              wlog_addr <= {3'b0, sram_transfer_cnt[2:0], log_ref[9:0]};
             end
             else begin
               acd_out <= sram_rdata;
@@ -201,6 +223,16 @@ module gdp_interface (
             ics_io <= 1'b0;
             state  <= IDLE;
           end
+        end
+
+        T3_STATE_WRITE_BYTE: begin
+          sram_wdata <= addr_low[0] ? {acd_in[7:0], sram_rdata[7:0]} : {sram_rdata[15:8], acd_in[7:0]};
+          sram_wr <= 1'b1;
+          wlog_wr <= 1'b1;
+          wlog_data <= {8'b0, acd_in[7:0]};
+          wlog_addr <= {6'b0, log_ref[9:0]};
+          ics_io <= 1'b0;
+          state <= IDLE;
         end
 
         HOLD_INIT: begin

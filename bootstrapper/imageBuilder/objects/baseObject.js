@@ -1,6 +1,6 @@
 export class BaseObject {
-  constructor(ref, objectDirectory) {
+  constructor(ref, { directoryObjectTable } = {}) {
     this.ref = ref;
-    this.objectDirectory = objectDirectory;
+    this.directoryObjectTable = directoryObjectTable;
   }
 }

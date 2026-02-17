@@ -1,7 +1,6 @@
 import { write32bit } from "../storage/base.js";
 import { SEGMENT_TYPE } from "../storage/objectTableDesciptors.js";
 import { BaseObject } from "./baseObject.js";
-import { toHex } from "../../format.js";
 
 export class ProcessorDataSegment extends BaseObject {
     get isAccess() {

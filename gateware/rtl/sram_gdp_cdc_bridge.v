@@ -34,16 +34,12 @@ module sram_gdp_cdc_bridge (
 
   // Synchronize inputs to fast clock domain
   reg [15:0] gdp_addr_sync1, gdp_addr_sync2;
-  reg gdp_req_sync1, gdp_req_sync2, gdp_req_sync3;
   reg gdp_wr_sync1, gdp_wr_sync2;
   reg gdp_rd_sync1, gdp_rd_sync2;
   reg [15:0] gdp_wdata_sync1, gdp_wdata_sync2;
 
   always @(posedge s_clk or negedge s_rst_n) begin
     if (~s_rst_n) begin
-      gdp_req_sync1 <= 0;
-      gdp_req_sync2 <= 0;
-      gdp_req_sync3 <= 0;
       gdp_addr_sync1 <= 0;
       gdp_addr_sync2 <= 0;
       gdp_wr_sync1 <= 0;
@@ -54,9 +50,6 @@ module sram_gdp_cdc_bridge (
       gdp_wdata_sync2 <= 0;
     end
     else begin
-      gdp_req_sync1 <= gdp_wr_req | gdp_rd_req;
-      gdp_req_sync2 <= gdp_req_sync1;
-      gdp_req_sync3 <= gdp_req_sync2;
       gdp_addr_sync1 <= gdp_addr;
       gdp_addr_sync2 <= gdp_addr_sync1;
       gdp_wr_sync1 <= gdp_wr_req;
@@ -69,8 +62,12 @@ module sram_gdp_cdc_bridge (
   end
 
   // also need to trigger SRAM access when address is changed with active request signal
-  wire trigger_sram_access = (gdp_req_sync2 & ~gdp_req_sync3) || ((gdp_addr_sync2 != gdp_addr_sync1) & gdp_req_sync3);
   reg trigger_sram_access_reg;
+  wire trigger_sram_access =
+    (gdp_wr_sync1 & ~gdp_wr_sync2)
+    || (gdp_rd_sync1 & ~gdp_rd_sync2)
+    || ((gdp_addr_sync2 != gdp_addr_sync1) & (gdp_wr_sync2 | gdp_rd_sync2));
+
   always @(posedge s_clk or negedge s_rst_n) begin
       if (~s_rst_n) trigger_sram_access_reg <= 0;
       else          trigger_sram_access_reg <= trigger_sram_access;

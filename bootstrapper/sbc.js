@@ -1,7 +1,7 @@
 import EventEmitter from 'node:events';
 
 const PORT_NAME = '/dev/ttyUSB0';
-const BAUD_RATE = 115200;
+const BAUD_RATE = 2_000_000;
 const RESPONSE_TIMEOUT_IN_MS = 1000; // 1s
 
 const COMMANDS = {
@@ -10,6 +10,7 @@ const COMMANDS = {
   SRAM_BULK_WRITE: 0x01,
   SRAM_READ: 0x03,
   LOG_READ: 0x11,
+  WLOG_READ: 0x90,
 };
 
 const ACK_REPLY = 0x01;
@@ -115,6 +116,10 @@ export async function sbc_readLog(addr) {
 export async function sbc_readRAM(addr) {
   return sbc?.sendCommand({ opcode: COMMANDS.SRAM_READ, data: [addr >> 8, addr & 0xFF], expectedRespone: 2 });
 };
+
+export async function sbc_readWLog() {
+  return sbc?.sendCommand({ opcode: COMMANDS.WLOG_READ, expectedRespone: 256 });
+}
 
 export async function sbc_bulkWrite(data) {
   const sz = data.length / 2;

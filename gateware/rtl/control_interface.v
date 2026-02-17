@@ -24,6 +24,11 @@ module control_interface (
   output reg        u_log_wr,
   output reg        u_log_rd,
 
+  // UART log access to write log
+  output reg [ 5:0] u_wlog_addr,
+  input      [31:0] u_wlog_data_out,
+  output reg        u_wlog_rd,
+
   // signals to GDP interface
   output reg gdp_trigger_init
 );
@@ -54,14 +59,15 @@ module control_interface (
   // output command opcodes
   localparam CMD_OUT_ACK = 8'h01, CMD_OUT_ERR = 8'hFF;
 
-  // input command opcodes
+  // input command opcodes (high bit means that there is no parameters for function)
   localparam CMD_IN_SRAM_BULK_WRITE = 8'h01,
              CMD_IN_SRAM_WRITE = 8'h02,
              CMD_IN_SRAM_READ = 8'h03,
              CMD_IN_LOG_WR = 8'h10,
              CMD_IN_LOG_RD = 8'h11,
              CMD_IN_PING = 8'h80,
-             CMD_IN_GDP_START = 8'h81;
+             CMD_IN_GDP_START = 8'h81,
+             CMD_IN_WLOG_RD = 8'h90;
 
   // common command FSM
   localparam CMD_STATE_IDLE = 3'd0,
@@ -80,21 +86,30 @@ module control_interface (
              SRAM_RD_DATA_LO_GAP = 4'd5;
 
   // FSM for WRITE_DUMP command
-  localparam SRAM_BLKWR_READ_WORD = 4'd0,
-             SRAM_BLKWR_WRITE_WORD = 4'd1,
-             SRAM_BLKWR_NEXT_WORD = 4'd2;
+  localparam SRAM_BLKWR_READ_WORD = 4'd0, SRAM_BLKWR_WRITE_WORD = 4'd1, SRAM_BLKWR_NEXT_WORD = 4'd2;
 
   // FSM for LOG_RD
-  localparam LOG_RD_REQ         = 5'd0,
-             LOG_RD_TYPE        = 5'd1,
-             LOG_RD_TYPE_GAP    = 5'd2,
-             LOG_RD_ADDR_HI     = 5'd3,
-             LOG_RD_ADDR_HI_GAP = 5'd4,
-             LOG_RD_ADDR_LO     = 5'd5,
-             LOG_RD_ADDR_LO_GAP = 5'd6;
+  localparam LOG_RD_REQ         = 4'd0,
+             LOG_RD_TYPE        = 4'd1,
+             LOG_RD_TYPE_GAP    = 4'd2,
+             LOG_RD_ADDR_HI     = 4'd3,
+             LOG_RD_ADDR_HI_GAP = 4'd4,
+             LOG_RD_ADDR_LO     = 4'd5,
+             LOG_RD_ADDR_LO_GAP = 4'd6;
+
+  // FSM for WLOG_RD
+  localparam WLOG_RD_REQ = 4'd0,
+             WLOG_RD_SEND_DATA0 = 4'd1,
+             WLOG_RD_SEND_DATA0_GAP = 4'd2,
+             WLOG_RD_SEND_DATA1 = 4'd3,
+             WLOG_RD_SEND_DATA1_GAP = 4'd4,
+             WLOG_RD_SEND_DATA2 = 4'd5,
+             WLOG_RD_SEND_DATA2_GAP = 4'd6,
+             WLOG_RD_SEND_DATA3 = 4'd7,
+             WLOG_RD_CHECK_DONE = 4'd8;
 
   reg [ 2:0] in_state;
-  reg [ 4:0] in_cmd_state;
+  reg [ 3:0] in_cmd_state;
   reg [ 7:0] in_cmd_opcode;
   reg [15:0] in_cmd_addr;
   reg [23:0] in_cmd_value;
@@ -102,6 +117,7 @@ module control_interface (
   reg [23:0] log_rd_data;
   reg        log_rd_valid;
   reg [15:0] sram_rd_data;
+  reg [31:0] wlog_rd_data;
   reg        bulk_write_wait_low_byte;
 
   localparam [7:0] LOG_TYPE_WRITE = 8'h01;
@@ -122,6 +138,8 @@ module control_interface (
       u_log_wr <= 0;
       u_log_rd <= 0;
       bulk_write_wait_low_byte <= 1'b0;
+      u_wlog_rd <= 1'b1;
+      u_wlog_addr <= 6'd0;
     end
     else begin
       // pulses
@@ -160,7 +178,8 @@ module control_interface (
                   if (!bulk_write_wait_low_byte) begin
                     in_cmd_value[15:8]       <= uart_rx_data;
                     bulk_write_wait_low_byte <= 1'b1;
-                  end else begin
+                  end
+                  else begin
                     in_cmd_value[7:0]        <= uart_rx_data;
                     in_cmd_addr              <= in_cmd_addr - 1;
                     in_cmd_state             <= SRAM_BLKWR_WRITE_WORD;
@@ -189,7 +208,8 @@ module control_interface (
               3'd0: in_cmd_addr[15:8] <= uart_rx_data;
               3'd1: begin
                 in_cmd_addr[7:0] <= uart_rx_data;
-                if (in_cmd_opcode == CMD_IN_SRAM_READ || in_cmd_opcode == CMD_IN_LOG_RD) in_state <= CMD_STATE_READY;
+                if (in_cmd_opcode == CMD_IN_SRAM_READ || in_cmd_opcode == CMD_IN_LOG_RD)
+                  in_state <= CMD_STATE_READY;
               end
               3'd2: in_cmd_value[15:8] <= uart_rx_data;
               3'd3: begin
@@ -215,6 +235,75 @@ module control_interface (
             CMD_IN_GDP_START: begin
               gdp_trigger_init <= 1;
               in_state         <= CMD_STATE_FINISHED;
+            end
+
+            // READ_WRITE_LOG 0x90
+            CMD_IN_WLOG_RD: begin
+              case (in_cmd_state)
+                WLOG_RD_REQ: begin
+                  u_wlog_rd <= 1'b1;
+                  u_wlog_addr <= 6'd0;
+                  in_cmd_state <= WLOG_RD_SEND_DATA0;
+                end
+
+                WLOG_RD_SEND_DATA0: begin
+                  if (!uart_tx_busy) begin
+                    wlog_rd_data <= u_wlog_data_out;
+                    uart_tx_data <= u_wlog_data_out[31:24];
+                    uart_tx_req <= 1'b1;
+                    in_cmd_state <= WLOG_RD_SEND_DATA0_GAP;
+                  end
+                end
+
+                WLOG_RD_SEND_DATA0_GAP: begin
+                  u_wlog_addr <= u_wlog_addr + 1'b1;
+                  uart_tx_req <= 1'b0;
+                  in_cmd_state <= WLOG_RD_SEND_DATA1;
+                end
+
+                WLOG_RD_SEND_DATA1: begin
+                  if (!uart_tx_busy) begin
+                    uart_tx_data <= wlog_rd_data[23:16];
+                    uart_tx_req <= 1'b1;
+                    in_cmd_state <= WLOG_RD_SEND_DATA1_GAP;
+                  end
+                end
+
+                WLOG_RD_SEND_DATA1_GAP: begin
+                  uart_tx_req <= 1'b0;
+                  in_cmd_state <= WLOG_RD_SEND_DATA2;
+                end
+
+                WLOG_RD_SEND_DATA2: begin
+                  if (!uart_tx_busy) begin
+                    uart_tx_data <= wlog_rd_data[15:8];
+                    uart_tx_req <= 1'b1;
+                    in_cmd_state <= WLOG_RD_SEND_DATA2_GAP;
+                  end
+                end
+
+                WLOG_RD_SEND_DATA2_GAP: begin
+                  uart_tx_req <= 1'b0;
+                  in_cmd_state <= WLOG_RD_SEND_DATA3;
+                end
+
+                WLOG_RD_SEND_DATA3: begin
+                  if (!uart_tx_busy) begin
+                    uart_tx_data <= wlog_rd_data[7:0];
+                    uart_tx_req <= 1'b1;
+                    in_cmd_state <= WLOG_RD_CHECK_DONE;
+                  end
+                end
+
+                WLOG_RD_CHECK_DONE: begin
+                  uart_tx_req <= 1'b0;
+                  if (u_wlog_addr == 6'd0) begin
+                    in_state <= CMD_STATE_FINISHED;
+                    u_wlog_rd <= 1'b0;
+                  end else
+                    in_cmd_state <= WLOG_RD_SEND_DATA0;
+                end
+              endcase
             end
 
             // WRITE_BYTE 0x02 addr1 addr0 data1 data0
@@ -254,7 +343,7 @@ module control_interface (
                 end
 
                 SRAM_RD_DATA_HI_GAP: begin
-                  uart_tx_req <= 0;
+                  uart_tx_req  <= 0;
                   in_cmd_state <= SRAM_RD_DATA_LO;
                 end
 

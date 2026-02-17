@@ -1,4 +1,4 @@
-module bram_log #(
+module execution_log #(
   parameter ADDR_WIDTH = 10
 ) (
   input wire clk,
@@ -17,7 +17,8 @@ module bram_log #(
   input wire        log_write_clk,
   input wire        log_wr,
   input wire [ 7:0] log_type,
-  input wire [15:0] log_addr
+  input wire [15:0] log_addr,
+  output reg [ADDR_WIDTH-1:0] log_wr_ptr
 );
   localparam integer DEPTH = (1 << ADDR_WIDTH);
   localparam integer MAX_ADDR = DEPTH - 1;
@@ -56,6 +57,8 @@ module bram_log #(
   reg [23:0] req_data_sync_1;
 
   reg pending;
+
+  assign log_wr_ptr = log_wr_ptr_f;
 
   always @(posedge log_write_clk or negedge rst_n) begin
     if (!rst_n) begin

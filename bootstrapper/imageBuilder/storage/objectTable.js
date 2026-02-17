@@ -1,6 +1,5 @@
 import { BaseObject } from '../objects/baseObject.js';
 import { writeObjectTableDescriptor, SEGMENT_DESCRIPTOR_SIZE, SEGMENT_TYPE, updateSegmentAddress } from './objectTableDesciptors.js';
-import { toHex } from '../../format.js';
 
 export class ObjectTable extends BaseObject {
   #objects = [];
