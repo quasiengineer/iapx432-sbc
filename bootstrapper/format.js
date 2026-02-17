@@ -1,3 +1,5 @@
+import { ObjectTable } from "./imageBuilder/storage/objectTable.js";
+
 const toHex = (value, sz = 4, raw = false) => raw ? value.toString(16).padStart(sz, '0') : `0x${value.toString(16).padStart(sz, '0')}`;
 
 const FPGA_LOG_MAP = {
@@ -12,17 +14,27 @@ const MEMORY_ACCESS_MODIFIER_MAP = [
   'other',
 ];
 
-const lookupAddress = (accessAddr, accessType, segments) => {
+const lookupAddress = (accessAddr, accessType, objects) => {
   // interconnect register
   if (accessType === 1) {
     return toHex(accessAddr);
   }
 
-  const segment = segments.find(({ address, size }) => accessAddr >= address && accessAddr < address + size);
-  return segment ? `${segment.ref}+${toHex(accessAddr - segment.address, 2)} (${toHex(accessAddr)})` : toHex(accessAddr);
+  const object = objects.find(({ address, size }) => accessAddr >= address && accessAddr < address + size);
+  if (!object) {
+    return toHex(accessAddr);
+  }
+
+  const offset = accessAddr - object.address;
+  if (!(object instanceof ObjectTable) || offset % 0x10 !== 0) {
+    return `${object.ref}+${toHex(offset, 2)} (${toHex(accessAddr)})`;
+  }
+
+  const descriptorIdx = Math.floor((offset / 0x10) - 1);
+  return `${object.ref}/${object.objects[descriptorIdx].ref} (${toHex(accessAddr)})`;
 };
 
-const printAccessLogEntry = (logAddr, spec, accessAddr, segments, writesMap) => {
+const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap) => {
   const accessType = (spec >> 7) & 1;
   const operation = (spec >> 6) & 1;
   const rmw = (spec >> 5) & 1;
@@ -45,7 +57,7 @@ const printAccessLogEntry = (logAddr, spec, accessAddr, segments, writesMap) => 
 
   const writeData = writesMap.has(logAddr) ? writesMap.get(logAddr) : [];
   const formattedWriteData = writeData.sort((a, b) => b.writeOffset - a.writeOffset).map(({ data }) => data).join(' ') || 'unknown';
-  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}' access${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, segments)}${operation === 0 ? '' : ` <${formattedWriteData}>`}`);
+  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}' access${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects)}${operation === 0 ? '' : ` <${formattedWriteData}>`}`);
 };
 
 const printHexDump = (image) => {

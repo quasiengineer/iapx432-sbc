@@ -22,7 +22,7 @@ const sbc_waitOnline = async () => {
 
 const args = process.argv.slice(2).reduce((acc, k, i, arr) => i % 2 === 0 ? {...acc, [k]: arr[i + 1]} : acc, {});
 
-const printAccessLog = async (segments) => {
+const printAccessLog = async (objects) => {
   // read write log (operations to write data to memory)
   const writeLogRaw = await sbc_readWLog();
   const writeLog = [];
@@ -53,7 +53,7 @@ const printAccessLog = async (segments) => {
       break;
     }
 
-    printAccessLogEntry(logAddr, spec, accessAddr, segments, writeMap);
+    printAccessLogEntry(logAddr, spec, accessAddr, objects, writeMap);
     if (spec === 0xF0) {
       break;
     }
@@ -77,18 +77,18 @@ const main = async () => {
   console.log('[+] SBC is online');
 
   console.log('[~] Building image...');
-  const { image, segments } = buildImage();
+  const { image, objects } = buildImage();
   await sbc_bulkWrite(image);
   console.log(`[+] ROM image has been written to SBC, size = ${image.length} bytes`);
 
-  await sbc_startGdp({ localCommsAddress: segments.find(({ ref }) => ref === 'processorLocalComms').address });
+  await sbc_startGdp({ localCommsAddress: objects.find(({ ref }) => ref === 'processorLocalComms').address });
   console.log('[+] GDP has been started');
 
   // wait some time to let GDP work
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   console.log('[~] Read access log after 2s of execution.');
-  await printAccessLog(segments);
+  await printAccessLog(objects);
 };
 
 main()

@@ -144,6 +144,7 @@ module gdp_interface (
             init_cnt <= 5'b0;
             init_io <= 1'b0;
             fatal_recorded <= 1'b0;
+            interconn_req_cnt <= 3'd0;
             state <= HOLD_INIT;
 
             // write information about init toggle to log
@@ -248,15 +249,22 @@ module gdp_interface (
         end
 
         T3_STATE_UPDATE_IPC_DATA: begin
-          // set IPC message in local communication segment for processor
-          sram_wr <= 1'b1;
-          sram_addr <= {1'b0, local_comms_addr[15:1]} + 16'd1;
-          sram_wdata <= interconn_req_cnt == 3'd0 ? IPC_MESSAGE_START_PROCESSOR : IPC_MESSAGE_ENTER_NORMAL_MODE;
-          interconn_req_cnt <= interconn_req_cnt + 1'b1;
-
-          // IPC state, always mark that local IPC arrived
-          acd_out <= 16'h0001;
           acd_oe  <= 1'b1;
+
+          if (interconn_req_cnt > 3'd1) begin
+            // no IPC anymore
+            acd_out <= 16'h0000;
+          end
+          else begin
+            // local IPC arrived
+            acd_out <= 16'h0001;
+            // set IPC message in local communication segment for processor
+            sram_wr <= 1'b1;
+            sram_addr <= {1'b0, local_comms_addr[15:1]} + 16'd1;
+            sram_wdata <= interconn_req_cnt == 3'd0 ? IPC_MESSAGE_START_PROCESSOR : IPC_MESSAGE_ENTER_NORMAL_MODE;
+            interconn_req_cnt <= interconn_req_cnt + 1'b1;
+          end
+
           ics_io <= 1'b0;
           state <= IDLE;
         end

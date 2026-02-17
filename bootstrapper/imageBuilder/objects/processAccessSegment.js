@@ -3,14 +3,9 @@ import { write32bit } from "../storage/base.js";
 import { SEGMENT_TYPE } from "../storage/objectTableDesciptors.js";
 import { BaseObject } from "./baseObject.js";
 
-export class CarrierAccessSegment extends BaseObject {
-  #messageRef;
-  #carriedObjectRef;
-
+export class ProcessAccessSegment extends BaseObject {
   constructor(ref, params) {
     super(ref, params);
-    this.#messageRef = params.messageRef;
-    this.#carriedObjectRef = params.carriedObjectRef;
   }
 
   get isAccess() {
@@ -18,11 +13,11 @@ export class CarrierAccessSegment extends BaseObject {
   }
 
   get type() {
-    return SEGMENT_TYPE.CARRIER_ACCESS;
+    return SEGMENT_TYPE.PROCESS_ACCESS;
   }
 
   get size() {
-    return 9 * ACCESS_DESCRIPTOR_SIZE;
+    return 12 * ACCESS_DESCRIPTOR_SIZE;
   }
 
   serialize(image, baseAddress) {
@@ -32,22 +27,28 @@ export class CarrierAccessSegment extends BaseObject {
     // data segment
     const dataSegmentRef = this.ref.replace(/Access$/, 'Data');
     write32bit(image, baseAddress + 0x00, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(dataSegmentRef)));
-    // next carrier in queue
+    // current context
     write32bit(image, baseAddress + 0x04, 0);
-    // current port
+    // globals access segment
     write32bit(image, baseAddress + 0x08, 0);
-    // second port
+    // local object table
     write32bit(image, baseAddress + 0x0C, 0);
-    // maintenance port
+    // process carrier
     write32bit(image, baseAddress + 0x10, 0);
-    // refined carrier
+    // dispatching port
     write32bit(image, baseAddress + 0x14, 0);
-    // outgoing message
+    // scheduling port
     write32bit(image, baseAddress + 0x18, 0);
-    // incoming message
-    write32bit(image, baseAddress + 0x1C, this.#messageRef ? createAccessDescriptor(objTableIdx, objTable.getObjectIndex(this.#messageRef)) : 0);
-    // carried object
-    write32bit(image, baseAddress + 0x20, this.#carriedObjectRef ? createAccessDescriptor(objTableIdx, objTable.getObjectIndex(this.#carriedObjectRef)) : 0);
+    // fault port
+    write32bit(image, baseAddress + 0x1C, 0);
+    // current message
+    write32bit(image, baseAddress + 0x20, 0);
+    // current port
+    write32bit(image, baseAddress + 0x24, 0);
+    // current carrier
+    write32bit(image, baseAddress + 0x28, 0);
+    // surrogate carrier
+    write32bit(image, baseAddress + 0x2C, 0);
 
     return this.size;
   }

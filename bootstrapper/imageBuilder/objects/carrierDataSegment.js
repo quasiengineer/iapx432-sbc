@@ -10,10 +10,12 @@ export const CARRIER_TYPE = {
 
 export class CarrierDataSegment extends BaseObject {
   #carrierType;
+  #hasMessage;
 
   constructor(ref, params) {
     super(ref, params);
     this.#carrierType = params.carrierType ?? 0;
+    this.#hasMessage = params.hasMessage ?? false;
   }
 
   get isAccess() {
@@ -30,7 +32,7 @@ export class CarrierDataSegment extends BaseObject {
 
   serialize(image, baseAddress) {
     // object lock + port type + carrier type + carrier status
-    write32bit(image, baseAddress, 0x0 | (this.#carrierType << 16));
+    write32bit(image, baseAddress, 0x0 | (this.#carrierType << 16) | ((this.#hasMessage ? 0b11 : 0b00) << 18));
     // maintenance request flag
     write32bit(image, baseAddress + 4, 0);
     // blocked queueing value

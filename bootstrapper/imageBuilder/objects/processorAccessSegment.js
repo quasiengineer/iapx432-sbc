@@ -24,6 +24,8 @@ export class ProcessorAccessSegment extends BaseObject {
 
     const mainObjectTable = this.directoryObjectTable.objects[mainObjectTableIdx - 1];
 
+    const normalCarrierAD = createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('normalCarrierAccess'));
+
     const accessDescriptors = [
       // +0x00 processor data segment
       createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processorData')),
@@ -35,8 +37,8 @@ export class ProcessorAccessSegment extends BaseObject {
       0x0,
       // +0x10 object table directory
       createAccessDescriptor(directoryObjectTableIdx, directoryObjectTableIdx),
-      // +0x14 processor carrier object
-      createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('processorCarrierAccess')),
+      // +0x14 processor carrier object (AD sourced from other carriers)
+      normalCarrierAD,
       // +0x18 delay port
       createAccessDescriptor(mainObjectTableIdx, mainObjectTable.getObjectIndex('delayPortAccess')),
       // +0x1C delay carrier
@@ -58,7 +60,7 @@ export class ProcessorAccessSegment extends BaseObject {
       // +0x3C diagnostic port
       0x0,
       // +0x40 carrier to normal port
-      0x0,
+      normalCarrierAD,
       // +0x44 carrier to alarm port
       0x0,
       // +0x48 carrier to reconfiguration port

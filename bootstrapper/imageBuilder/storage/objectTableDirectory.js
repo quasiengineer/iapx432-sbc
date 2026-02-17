@@ -12,11 +12,11 @@ export class ObjectTableDirectory {
     this.#directory.addObject(objectTable);
   }
 
-  serialize(segments) {
+  serialize(objects) {
     const image = new Uint8Array(65536);
     this.#directory.address = OBJECT_TABLE_DIRECTORY_STARTING_ADDRESS;
-    const fullSize = this.#directory.serialize(image, OBJECT_TABLE_DIRECTORY_STARTING_ADDRESS, segments);
-    segments.push({ ref: 'objectDirectory', address: OBJECT_TABLE_DIRECTORY_STARTING_ADDRESS, size: this.#directory.size });
+    const fullSize = this.#directory.serialize(image, OBJECT_TABLE_DIRECTORY_STARTING_ADDRESS, objects);
+    objects.push(this.#directory);
     return image.slice(0, this.#directory.address + fullSize);
   }
 }
