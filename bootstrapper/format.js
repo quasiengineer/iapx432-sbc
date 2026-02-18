@@ -8,9 +8,9 @@ const FPGA_LOG_MAP = {
 };
 
 const MEMORY_ACCESS_MODIFIER_MAP = [
-  'instruction segment',
-  'stack segment',
-  'context control segment',
+  'instruction',
+  'stack',
+  'context',
   'other',
 ];
 
@@ -30,8 +30,13 @@ const lookupAddress = (accessAddr, accessType, objects) => {
     return `${object.ref}+${toHex(offset, 2)} (${toHex(accessAddr)})`;
   }
 
-  const descriptorIdx = Math.floor((offset / 0x10) - 1);
-  return `${object.ref}/${object.objects[descriptorIdx].ref} (${toHex(accessAddr)})`;
+  const descriptorIdx = Math.floor(offset / 0x10) - 1;
+  if (descriptorIdx >= 0) {
+    return `${object.ref}/${object.objects[descriptorIdx].ref} (${toHex(accessAddr)})`;
+  }
+
+  // header
+  return `${object.ref}:Header (${toHex(accessAddr)})`;
 };
 
 const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap) => {

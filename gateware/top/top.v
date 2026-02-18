@@ -27,6 +27,8 @@ module top (
     output        LED
 );
 
+  localparam integer WRITE_LOG_ADDR_WIDTH = 7;
+
   // clock generation
   wire clk_50, clk_125;
   wire clka, clkb;
@@ -97,14 +99,14 @@ module top (
   );
 
   // write log storage
-  wire [5:0]  u_wlog_addr;
+  wire [WRITE_LOG_ADDR_WIDTH-1:0]  u_wlog_addr;
   wire [32:0] u_wlog_data_out;
   wire u_wlog_rd;
   wire wlog_wr;
   wire [15:0] wlog_data;
   wire [15:0] wlog_addr;
   write_log #(
-    .ADDR_WIDTH(6)
+    .ADDR_WIDTH(WRITE_LOG_ADDR_WIDTH)
   ) wlog_storage (
     .clk(clk_50),
     .rst_n(rst_n),
@@ -201,7 +203,9 @@ module top (
     .s_valid(sram_valid)
   );
 
-  control_interface control_interface (
+  control_interface #(
+    .WRITE_LOG_ADDR_WIDTH(WRITE_LOG_ADDR_WIDTH)
+  ) control_interface (
     .clk(clk_50),
     .rst_n(rst_n),
     .uart_rx_io(UART_RX),

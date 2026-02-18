@@ -24,9 +24,10 @@ export class ContextAccessSegment extends BaseObject {
     const objTableIdx = this.directoryObjectTable.getObjectIndex('objectTableMain');
     const objTable = this.directoryObjectTable.objects[objTableIdx - 1];
 
+    const [, idx] = this.ref.match(/^processContext(\d+)Access$/);
+
     // data segment
-    const dataSegmentRef = this.ref.replace(/Access$/, 'Data');
-    write32bit(image, baseAddress + 0x00, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(dataSegmentRef)));
+    write32bit(image, baseAddress + 0x00, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Data`)));
     // constants data segment
     write32bit(image, baseAddress + 0x04, 0);
     // previous context
@@ -42,8 +43,9 @@ export class ContextAccessSegment extends BaseObject {
     // entry access segment 3
     write32bit(image, baseAddress + 0x1C, 0);
     // domain of definition
-    write32bit(image, baseAddress + 0x20, 0);
+    write32bit(image, baseAddress + 0x20, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Domain`)));
     // context's operand stack
+    // write32bit(image, baseAddress + 0x24, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Stack`)));
     write32bit(image, baseAddress + 0x24, 0);
 
     return this.size;

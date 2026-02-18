@@ -120,18 +120,26 @@ export async function sbc_readRAM(addr) {
   return sbc?.sendCommand({ opcode: COMMANDS.SRAM_READ, data: [addr >> 8, addr & 0xFF], expectedRespone: 2 });
 };
 
+export const WLOG_RECORD_COUNT = (2 ** 7) * 4
+
 export async function sbc_readWLog() {
-  return sbc?.sendCommand({ opcode: COMMANDS.WLOG_READ, expectedRespone: 256 });
+  return sbc?.sendCommand({ opcode: COMMANDS.WLOG_READ, expectedRespone: WLOG_RECORD_COUNT });
 }
 
 export async function sbc_bulkWrite(data) {
-  const sz = data.length / 2;
   const writes = [];
-  for (let i = sz - 1; i >= 0; i--) {
-    writes.push(data[i * 2 + 1], data[i * 2]);
+
+  // SRAM keeps 16-bit words, so need to have padding
+  if (data.length % 2 === 1) {
+    writes.push(0x00, data[data.length - 1]);
   }
 
-  return sbc?.sendCommand({ opcode: COMMANDS.SRAM_BULK_WRITE, data: [sz >> 8, sz & 0xFF, ...writes], timeout: null });
+  for (let wordIdx = Math.floor(data.length / 2) - 1; wordIdx >= 0; wordIdx--) {
+    writes.push(data[wordIdx * 2 + 1], data[wordIdx * 2]);
+  }
+
+  const wordsToWrite = writes.length >> 1;
+  return sbc?.sendCommand({ opcode: COMMANDS.SRAM_BULK_WRITE, data: [wordsToWrite >> 8, wordsToWrite & 0xFF, ...writes], timeout: null });
 };
 
 export async function sbc_openPort() {

@@ -1,6 +1,14 @@
-import { sbc_bulkWrite, sbc_openPort, sbc_ping, sbc_closePort, sbc_startGdp, sbc_readLog, sbc_readRAM, sbc_readWLog } from './sbc.js';
 import { printAccessLogEntry, printHexDump, toHex } from './format.js';
 import { buildImage } from './imageBuilder/image.js';
+import {
+  sbc_bulkWrite,
+  sbc_openPort,
+  sbc_ping,
+  sbc_closePort,
+  sbc_startGdp,
+  sbc_readLog,
+  sbc_readWLog, WLOG_RECORD_COUNT,
+} from './sbc.js';
 
 const PING_RETRIES = 5;
 
@@ -27,7 +35,7 @@ const printAccessLog = async (objects) => {
   const writeLogRaw = await sbc_readWLog();
   const writeLog = [];
   const writeMap = new Map();
-  for (let i = 0; i < 256; i += 4) {
+  for (let i = 0; i < WLOG_RECORD_COUNT; i += 4) {
     const writeData = writeLogRaw[i + 0] << 8 | writeLogRaw[i + 1];
     const writeLocation = writeLogRaw[i + 2] << 8 | writeLogRaw[i + 3];
     const logRef = writeLocation & 0x3FF;
@@ -62,11 +70,9 @@ const printAccessLog = async (objects) => {
 
 const main = async () => {
   if (args.hasOwnProperty('--print-image')) {
-    const { image, segments } = buildImage();
+    const { image } = buildImage();
     console.log(`RAM Image dump:`);
     printHexDump(image);
-    console.log(`Segments:`);
-    console.log(segments);
     return;
   }
 

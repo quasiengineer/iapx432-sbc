@@ -1,4 +1,6 @@
-module control_interface (
+module control_interface #(
+  parameter WRITE_LOG_ADDR_WIDTH = 6
+)(
   input wire clk,   // 50Mhz
   input wire rst_n,
 
@@ -25,7 +27,7 @@ module control_interface (
   output reg        u_log_rd,
 
   // UART log access to write log
-  output reg [ 5:0] u_wlog_addr,
+  output reg [WRITE_LOG_ADDR_WIDTH-1:0] u_wlog_addr,
   input      [31:0] u_wlog_data_out,
   output reg        u_wlog_rd,
 
@@ -140,7 +142,7 @@ module control_interface (
       u_log_rd <= 0;
       bulk_write_wait_low_byte <= 1'b0;
       u_wlog_rd <= 1'b1;
-      u_wlog_addr <= 6'd0;
+      u_wlog_addr <= {WRITE_LOG_ADDR_WIDTH{1'b0}};
     end
     else begin
       // pulses
@@ -244,7 +246,7 @@ module control_interface (
               case (in_cmd_state)
                 WLOG_RD_REQ: begin
                   u_wlog_rd <= 1'b1;
-                  u_wlog_addr <= 6'd0;
+                  u_wlog_addr <= {WRITE_LOG_ADDR_WIDTH{1'b0}};
                   in_cmd_state <= WLOG_RD_SEND_DATA0;
                 end
 
@@ -299,7 +301,7 @@ module control_interface (
 
                 WLOG_RD_CHECK_DONE: begin
                   uart_tx_req <= 1'b0;
-                  if (u_wlog_addr == 6'd0) begin
+                  if (u_wlog_addr == {WRITE_LOG_ADDR_WIDTH{1'b0}}) begin
                     in_state  <= CMD_STATE_FINISHED;
                     u_wlog_rd <= 1'b0;
                   end

@@ -11,6 +11,8 @@ import { ProcessDataSegment } from './objects/processDataSegment.js';
 import { ProcessAccessSegment } from './objects/processAccessSegment.js';
 import { ContextDataSegment } from './objects/contextDataSegment.js';
 import { ContextAccessSegment } from './objects/contextAccessSegment.js';
+import { DomainSegment } from './objects/domainSegment.js';
+import { InstructionSegment } from './objects/instructionSegment.js';
 
 const buildImage = () => {
   const processorObjectTable = new ObjectTable('objectTableProcessor');
@@ -43,8 +45,10 @@ const buildImage = () => {
   mainObjectTable.addObject(new CarrierAccessSegment('processCarrierAccess', { directoryObjectTable, carriedObjectRef: 'processAccess' }));
   mainObjectTable.addObject(new ProcessDataSegment('processData'));
   mainObjectTable.addObject(new ProcessAccessSegment('processAccess', { directoryObjectTable }));
-  mainObjectTable.addObject(new ContextDataSegment('processContext0Data'));
   mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable }));
+  mainObjectTable.addObject(new ContextDataSegment('processContext0Data'));
+  mainObjectTable.addObject(new DomainSegment('processContext0Domain', { directoryObjectTable, instructionsRefs: ['processContext0Instruction0'] }));
+  mainObjectTable.addObject(new InstructionSegment('processContext0Instruction0', { directoryObjectTable, instructions: [0b001110, 0x00, 0x00, 0x00], contextIdx: 0 }));
 
   const objects = [];
   return { image: objectDirectory.serialize(objects), objects };
