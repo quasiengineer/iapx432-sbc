@@ -9,6 +9,8 @@ import { CARRIER_TYPE, CarrierDataSegment } from './objects/carrierDataSegment.j
 import { CarrierAccessSegment } from './objects/carrierAccessSegment.js';
 import { ProcessDataSegment } from './objects/processDataSegment.js';
 import { ProcessAccessSegment } from './objects/processAccessSegment.js';
+import { ContextDataSegment } from './objects/contextDataSegment.js';
+import { ContextAccessSegment } from './objects/contextAccessSegment.js';
 
 const buildImage = () => {
   const processorObjectTable = new ObjectTable('objectTableProcessor');
@@ -41,6 +43,8 @@ const buildImage = () => {
   mainObjectTable.addObject(new CarrierAccessSegment('processCarrierAccess', { directoryObjectTable, carriedObjectRef: 'processAccess' }));
   mainObjectTable.addObject(new ProcessDataSegment('processData'));
   mainObjectTable.addObject(new ProcessAccessSegment('processAccess', { directoryObjectTable }));
+  mainObjectTable.addObject(new ContextDataSegment('processContext0Data'));
+  mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable }));
 
   const objects = [];
   return { image: objectDirectory.serialize(objects), objects };

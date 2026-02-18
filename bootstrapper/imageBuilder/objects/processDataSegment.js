@@ -1,12 +1,6 @@
-import { write16bit } from "../storage/base.js";
+import { write16bit, write32bit } from "../storage/base.js";
 import { SEGMENT_TYPE } from "../storage/objectTableDesciptors.js";
 import { BaseObject } from "./baseObject.js";
-
-export const CARRIER_TYPE = {
-  PROCESSOR: 0b00,
-  PROCESS: 0b01,
-  SURROGATE: 0b10,
-};
 
 export class ProcessDataSegment extends BaseObject {
   constructor(ref, params) {
@@ -28,6 +22,9 @@ export class ProcessDataSegment extends BaseObject {
   serialize(image, baseAddress) {
     // object lock
     write16bit(image, baseAddress, 0x0);
+
+    // period count (don't send process to scheduling port) + service period
+    write32bit(image, baseAddress + 0x20, 0xFFFFFFFF);
 
     return this.size;
   }

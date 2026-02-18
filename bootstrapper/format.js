@@ -57,7 +57,7 @@ const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap) => {
 
   const writeData = writesMap.has(logAddr) ? writesMap.get(logAddr) : [];
   const formattedWriteData = writeData.sort((a, b) => b.writeOffset - a.writeOffset).map(({ data }) => data).join(' ') || 'unknown';
-  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}' access${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects)}${operation === 0 ? '' : ` <${formattedWriteData}>`}`);
+  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}'${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects)}${operation === 0 ? '' : ` <${formattedWriteData}>`}`);
 };
 
 const printHexDump = (image) => {
