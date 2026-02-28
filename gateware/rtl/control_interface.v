@@ -5,8 +5,10 @@ module control_interface #(
   input wire rst_n,
 
   // UART interface
-  input  uart_rx_io,
-  output uart_tx_io,
+  input            uart_rx_io,
+  output reg [7:0] uart_tx_data,
+  output reg       uart_tx_req,
+  input            uart_tx_busy,
 
   // SRAM interface (16-bit wide external SRAM; UART still moves 8-bit payloads)
   output reg         sram_req,
@@ -32,8 +34,7 @@ module control_interface #(
   output reg        u_wlog_rd,
 
   // signals to GDP interface
-  output reg gdp_trigger_init,
-  output reg [15:0] gdp_local_comms_addr
+  output reg gdp_trigger_init
 );
   wire [7:0] uart_rx_data;
   wire uart_rx_valid;
@@ -47,18 +48,6 @@ module control_interface #(
     .busy(uart_rx_busy)
   );
 
-  reg [7:0] uart_tx_data;
-  reg uart_tx_req;
-  wire uart_tx_busy;
-  uart_tx uart_transmitter (
-    .clk(clk),
-    .rst_n(rst_n),
-    .data_in(uart_tx_data),
-    .send(uart_tx_req),
-    .busy(uart_tx_busy),
-    .tx_io(uart_tx_io)
-  );
-
   // output command opcodes
   localparam CMD_OUT_ACK = 8'h01, CMD_OUT_ERR = 8'hFF;
 
@@ -68,7 +57,7 @@ module control_interface #(
              CMD_IN_SRAM_READ = 8'h03,
              CMD_IN_LOG_WR = 8'h10,
              CMD_IN_LOG_RD = 8'h11,
-             CMD_IN_GDP_START = 8'h20,
+             CMD_IN_GDP_START = 8'h81,
              CMD_IN_PING = 8'h80,
              CMD_IN_WLOG_RD = 8'h90;
 
@@ -211,7 +200,7 @@ module control_interface #(
               3'd0: in_cmd_addr[15:8] <= uart_rx_data;
               3'd1: begin
                 in_cmd_addr[7:0] <= uart_rx_data;
-                if (in_cmd_opcode == CMD_IN_SRAM_READ || in_cmd_opcode == CMD_IN_LOG_RD || in_cmd_opcode == CMD_IN_GDP_START)
+                if (in_cmd_opcode == CMD_IN_SRAM_READ || in_cmd_opcode == CMD_IN_LOG_RD)
                   in_state <= CMD_STATE_READY;
               end
               3'd2: in_cmd_value[15:8] <= uart_rx_data;
@@ -234,9 +223,8 @@ module control_interface #(
             // PING 0x80
             CMD_IN_PING: in_state <= CMD_STATE_FINISHED;
 
-            // GDP_START 0x20 localCommsAddrHi localCommsAddrLo
+            // GDP_START 0x81
             CMD_IN_GDP_START: begin
-              gdp_local_comms_addr <= in_cmd_addr;
               gdp_trigger_init     <= 1;
               in_state             <= CMD_STATE_FINISHED;
             end

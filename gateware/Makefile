@@ -42,7 +42,7 @@ $(ASC): $(JSON) $(PCF) $(CONSTRAINTS)
 		--report $(REPORT) \
 		--pcf-allow-unconstrained \
 		--Werror \
-		--seed 2 \
+		--seed 1 \
 		2>&1 | tee nextpnr.log; \
 	status=$$?; \
 	if [ "$$status" -ne 0 ]; then \
@@ -58,11 +58,11 @@ $(BIN): $(ASC)
 
 flash: $(BIN)
 	$(ICEPROG) -X $(BIN)
-	./scripts/ft232_uart.py
+	./scripts/ft232_uart.sh
 
 reset:
 	$(ICEPROG) -t
-	./scripts/ft232_uart.py
+	./scripts/ft232_uart.sh
 
 clean:
 	rm -rf build

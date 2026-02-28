@@ -1,3 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { compile } from './compiler/compiler.js';
 import { ObjectTableDirectory } from './storage/objectTableDirectory.js';
 import { ObjectTable } from './storage/objectTable.js';
 import { ProcessorAccessSegment } from './objects/processorAccessSegment.js';
@@ -11,10 +16,11 @@ import { ProcessDataSegment } from './objects/processDataSegment.js';
 import { ProcessAccessSegment } from './objects/processAccessSegment.js';
 import { ContextDataSegment } from './objects/contextDataSegment.js';
 import { ContextAccessSegment } from './objects/contextAccessSegment.js';
+import { OperandStackSegment } from './objects/operandStackSegment.js';
 import { DomainSegment } from './objects/domainSegment.js';
 import { InstructionSegment } from './objects/instructionSegment.js';
 
-const buildImage = () => {
+const buildImage = (programName) => {
   const processorObjectTable = new ObjectTable('objectTableProcessor');
   // empty, would not be used
   const tempDirObjectTable = new ObjectTable('objectTableTemp');
@@ -29,6 +35,9 @@ const buildImage = () => {
 
   // processors object table contains only processor access segments
   processorObjectTable.addObject(new ProcessorAccessSegment('processorAccess', { directoryObjectTable }));
+
+  // interconnect segment for UART output
+  mainObjectTable.addInterconnectSegment('uartInterconnect', 0x2000, 0x10);
 
   // here is all objects, except processor access segments
   mainObjectTable.addObject(new ProcessorDataSegment('processorData'));
@@ -45,10 +54,20 @@ const buildImage = () => {
   mainObjectTable.addObject(new CarrierAccessSegment('processCarrierAccess', { directoryObjectTable, carriedObjectRef: 'processAccess' }));
   mainObjectTable.addObject(new ProcessDataSegment('processData'));
   mainObjectTable.addObject(new ProcessAccessSegment('processAccess', { directoryObjectTable }));
-  mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable }));
-  mainObjectTable.addObject(new ContextDataSegment('processContext0Data'));
+  mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable, objectsRefs: ['uartInterconnect'] }));
+  mainObjectTable.addObject(new ContextDataSegment('processContext0Data', { sp: 12 }));
+  // XXX: stack contains
+  //   - object selector to AD for uartInterconnect segment (EAS = 0, slot = 10)
+  //   - offset in interconnect segment
+  //   - data to be sent
+  mainObjectTable.addObject(new OperandStackSegment('processContext0Stack', { size: 0x20, data: [0x02, 0x00, 0x00, 0x00, 10 << 2, 0x00, 0xaa, 0x55, 0x00, 0x00, 10 << 2, 0x00] }));
   mainObjectTable.addObject(new DomainSegment('processContext0Domain', { directoryObjectTable, instructionsRefs: ['processContext0Instruction0'] }));
-  mainObjectTable.addObject(new InstructionSegment('processContext0Instruction0', { directoryObjectTable, instructions: [0b001110, 0x00, 0x00, 0x00], contextIdx: 0 }));
+
+  // read and compile program
+  const dirName = path.dirname(fileURLToPath(import.meta.url));
+  const sourceCode = fs.readFileSync(path.resolve(`${dirName}/programs/${programName}.i432`), 'utf8');
+  const instructions = compile(sourceCode);
+  mainObjectTable.addObject(new InstructionSegment('processContext0Instruction0', { directoryObjectTable, instructions, contextIdx: 0 }));
 
   const objects = [];
   return { image: objectDirectory.serialize(objects), objects };

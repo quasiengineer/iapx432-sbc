@@ -15,19 +15,24 @@ module gdp_interface (
   output reg init_io,
   output reg ics_io,
 
+  // UART
+  output reg       uart_send,
+  output reg [7:0] uart_data,
+  input            uart_busy,
+
   // interface with SRAM
   output reg [15:0] sram_addr,
-  output reg sram_wr,
-  output reg sram_rd,
-  output reg sram_req,
+  output reg        sram_wr,
+  output reg        sram_rd,
+  output reg        sram_req,
   output reg [15:0] sram_wdata,
-  input [15:0] sram_rdata,
+  input      [15:0] sram_rdata,
 
   // Access log writer (same clock domain)
-  output reg        log_wr,
-  output reg [ 7:0] log_type,
-  output reg [15:0] log_addr,
-  input wire [ 9:0] log_wr_ptr,
+  output reg         log_wr,
+  output reg  [ 7:0] log_type,
+  output reg  [15:0] log_addr,
+  input  wire [ 9:0] log_wr_ptr,
 
   // Write log writer (same clock domain)
   output reg        wlog_wr,
@@ -35,8 +40,7 @@ module gdp_interface (
   output reg [15:0] wlog_addr,
 
   // signals from control module
-  input wire trigger_init,
-  input wire [15:0] local_comms_addr
+  input wire trigger_init
 );
 
   assign clr_io = rst_n;
@@ -57,12 +61,10 @@ module gdp_interface (
   reg spec_wr;
 
   // IPC register access
-  reg [2:0] interconn_req_cnt;
   reg [15:0] interconn_reg;
+  reg [15:0] interconn_reg_addr;
   reg interconn_reg_read;
-
-  localparam IPC_MESSAGE_ENTER_NORMAL_MODE = 16'd4;
-  localparam IPC_MESSAGE_START_PROCESSOR = 16'd14;
+  reg interconn_reg_write_trigger;
 
   // for SRAM transfers
   reg [2:0] sram_transfer_cnt;
@@ -73,7 +75,7 @@ module gdp_interface (
              T2_STATE = 3'd1,
              T3_STATE = 3'd2,
              T3_STATE_WRITE_BYTE = 3'd3,
-             T3_STATE_UPDATE_IPC_DATA = 3'd4,
+             T3_STATE_WRITE_REG = 3'd4,
              HOLD_INIT = 3'd5,
              RECORD_FATAL = 3'd6;
 
@@ -98,9 +100,10 @@ module gdp_interface (
       sram_transfer <= 1'b0;
       spec_wr <= 1'b0;
       interconn_reg_read <= 1'b0;
+      interconn_reg_write_trigger <= 1'b0;
       interconn_reg <= 16'b0;
+      interconn_reg_addr <= 16'b0;
       log_ref <= 10'b0;
-      interconn_req_cnt <= 3'b0;
     end
     else begin
       log_wr  <= 1'b0;
@@ -144,7 +147,6 @@ module gdp_interface (
             init_cnt <= 5'b0;
             init_io <= 1'b0;
             fatal_recorded <= 1'b0;
-            interconn_req_cnt <= 3'd0;
             state <= HOLD_INIT;
 
             // write information about init toggle to log
@@ -162,18 +164,15 @@ module gdp_interface (
             state <= T3_STATE;
 
             if (spec[7] == 1'b1) begin
-              // XXX: support only read operation from interconnect registers
               if (!spec_wr) begin
-                if (addr_low == 8'h02) begin
-                  state <= T3_STATE_UPDATE_IPC_DATA;
-                  // need to reset "semaphore" in local communication segment for processor to let it process IPC
-                  sram_wr <= 1'b1;
-                  sram_addr <= {1'b0, local_comms_addr[15:1]} + 16'd2;
-                  sram_wdata <= 16'h0001;
-                end
+                if (addr_low == 8'h02) interconn_reg <= 16'h0001;  // local IPC arrived
                 else if (addr_low == 8'h00) interconn_reg <= 16'h0001;  // processor ID
                 else interconn_reg <= 16'h0000;  // default
                 interconn_reg_read <= 1'b1;
+              end
+              else begin
+                interconn_reg_addr <= {acd_in[7:0], addr_low[7:0]};
+                state <= T3_STATE_WRITE_REG;
               end
             end
             else begin
@@ -238,33 +237,19 @@ module gdp_interface (
           end
         end
 
+        T3_STATE_WRITE_REG: begin
+          interconn_reg <= acd_in;
+          interconn_reg_write_trigger <= ~interconn_reg_write_trigger;
+          ics_io <= 1'b0;
+          state <= IDLE;
+        end
+
         T3_STATE_WRITE_BYTE: begin
           sram_wdata <= addr_low[0] ? {acd_in[7:0], sram_rdata[7:0]} : {sram_rdata[15:8], acd_in[7:0]};
           sram_wr <= 1'b1;
           wlog_wr <= 1'b1;
           wlog_data <= {8'b0, acd_in[7:0]};
           wlog_addr <= {6'b0, log_ref[9:0]};
-          ics_io <= 1'b0;
-          state <= IDLE;
-        end
-
-        T3_STATE_UPDATE_IPC_DATA: begin
-          acd_oe  <= 1'b1;
-
-          if (interconn_req_cnt > 3'd1) begin
-            // no IPC anymore
-            acd_out <= 16'h0000;
-          end
-          else begin
-            // local IPC arrived
-            acd_out <= 16'h0001;
-            // set IPC message in local communication segment for processor
-            sram_wr <= 1'b1;
-            sram_addr <= {1'b0, local_comms_addr[15:1]} + 16'd1;
-            sram_wdata <= interconn_req_cnt == 3'd0 ? IPC_MESSAGE_START_PROCESSOR : IPC_MESSAGE_ENTER_NORMAL_MODE;
-            interconn_req_cnt <= interconn_req_cnt + 1'b1;
-          end
-
           ics_io <= 1'b0;
           state <= IDLE;
         end
@@ -305,6 +290,92 @@ module gdp_interface (
       init_toggle_sync0 <= init_toggle_u;
       init_toggle_sync1 <= init_toggle_sync0;
       init_toggle_sync2 <= init_toggle_sync1;
+    end
+  end
+
+  /*
+   * Send data via UART about IPC register write operation
+   */
+
+  reg [7:0] uart_fifo_data;
+  reg uart_fifo_req;
+  uart_fifo u_uart_fifo (
+    .clk(u_clk),
+    .rst_n(rst_n),
+    .data_in(uart_fifo_data),
+    .write_req(uart_fifo_req),
+    .data_out(uart_data),
+    .send(uart_send),
+    .uart_busy(uart_busy)
+  );
+
+  reg [3:0] uart_state;
+  localparam UART_IDLE = 4'd0,
+             UART_SEND_OPCODE = 4'd1,
+             UART_SEND_OPCODE_GAP = 4'd2,
+             UART_SEND_ADDR_HI = 4'd3,
+             UART_SEND_ADDR_HI_GAP = 4'd4,
+             UART_SEND_ADDR_LO = 4'd5,
+             UART_SEND_ADDR_LO_GAP = 4'd6,
+             UART_SEND_DATA_HI = 4'd7,
+             UART_SEND_DATA_HI_GAP = 4'd8,
+             UART_SEND_DATA_LO = 4'd9;
+
+  reg ipc_reg_write_sync0, ipc_reg_write_sync1, ipc_reg_write_sync2;
+  always @(posedge u_clk or negedge rst_n) begin
+    if (!rst_n) begin
+      ipc_reg_write_sync0 <= 1'b0;
+      ipc_reg_write_sync1 <= 1'b0;
+      ipc_reg_write_sync2 <= 1'b0;
+      uart_state <= UART_IDLE;
+    end
+    else begin
+      // pulses
+      uart_fifo_req <= 1'b0;
+
+      ipc_reg_write_sync0 <= interconn_reg_write_trigger;
+      ipc_reg_write_sync1 <= ipc_reg_write_sync0;
+      ipc_reg_write_sync2 <= ipc_reg_write_sync1;
+
+      if (ipc_reg_write_sync1 != ipc_reg_write_sync2) begin
+        uart_state <= UART_SEND_OPCODE;
+      end
+
+      case (uart_state)
+        UART_SEND_OPCODE: begin
+          uart_fifo_data <= 8'h02;
+          uart_fifo_req <= 1'b1;
+          uart_state <= UART_SEND_OPCODE_GAP;
+        end
+        UART_SEND_OPCODE_GAP: uart_state <= UART_SEND_ADDR_HI;
+
+        UART_SEND_ADDR_HI: begin
+          uart_fifo_data <= interconn_reg_addr[15:8];
+          uart_fifo_req <= 1'b1;
+          uart_state <= UART_SEND_ADDR_HI_GAP;
+        end
+        UART_SEND_ADDR_HI_GAP: uart_state <= UART_SEND_ADDR_LO;
+
+        UART_SEND_ADDR_LO: begin
+          uart_fifo_data <= interconn_reg_addr[7:0];
+          uart_fifo_req <= 1'b1;
+          uart_state <= UART_SEND_ADDR_LO_GAP;
+        end
+        UART_SEND_ADDR_LO_GAP: uart_state <= UART_SEND_DATA_HI;
+
+        UART_SEND_DATA_HI: begin
+          uart_fifo_data <= interconn_reg[15:8];
+          uart_fifo_req <= 1'b1;
+          uart_state <= UART_SEND_DATA_HI_GAP;
+        end
+        UART_SEND_DATA_HI_GAP: uart_state <= UART_SEND_DATA_LO;
+
+        UART_SEND_DATA_LO: begin
+          uart_fifo_data <= interconn_reg[7:0];
+          uart_fifo_req <= 1'b1;
+          uart_state <= UART_IDLE;
+        end
+      endcase
     end
   end
 

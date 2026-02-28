@@ -38,7 +38,7 @@ const PROCESSOR_CLASS = {
 const GDP_SEGMENT_TYPES_ACCESS = [SEGMENT_TYPE.PROCESSOR_ACCESS, SEGMENT_TYPE.PROCESS_ACCESS, SEGMENT_TYPE.CONTEXT_ACCESS];
 const GDP_SEGMENT_TYPES_DATA = [SEGMENT_TYPE.PROCESSOR_DATA, SEGMENT_TYPE.PROCESS_DATA, SEGMENT_TYPE.CONTEXT_DATA, SEGMENT_TYPE.OPERAND_STACK_DATA, SEGMENT_TYPE.INSTRUCTION_DATA];
 
-export const writeObjectTableDescriptor = (image, desciptorAddr, descriptor) => {
+export const writeStorageDescriptor = (image, desciptorAddr, descriptor) => {
   const { isAccess, address, length, type } = descriptor;
 
   const GDPSegmentTypes = isAccess ? GDP_SEGMENT_TYPES_ACCESS : GDP_SEGMENT_TYPES_DATA;
@@ -69,6 +69,24 @@ export const writeObjectTableDescriptor = (image, desciptorAddr, descriptor) => 
   write32bit(image, desciptorAddr + 4, word1);
   write32bit(image, desciptorAddr + 8, word2);
   write32bit(image, desciptorAddr + 12, word3);
+};
+
+export const writeInterconnectDescriptor = (image, desciptorAddr, descriptor) => {
+  const { address, length } = descriptor;
+
+  const word0 =
+    0b00 // descriptor type
+    | (0b1 << 2) // valid, should be 1
+    | (0b01 << 3) // descriptor subtype, should be 01
+    | (0 << 5) // i/o lock, 1 if segment is mapped by IP
+    | (0 << 6) // altered, dirty flag for segment
+    | (0 << 7) // accessed, toched flag for segment
+    | (address << 8);
+
+  write32bit(image, desciptorAddr, word0);
+  write32bit(image, desciptorAddr + 4, length - 1);
+  write32bit(image, desciptorAddr + 8, 0x00);
+  write32bit(image, desciptorAddr + 12, 0x00);
 };
 
 export const updateSegmentAddress = (image, desciptorAddr, address) => {

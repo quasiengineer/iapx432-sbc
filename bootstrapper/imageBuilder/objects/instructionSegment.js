@@ -35,7 +35,8 @@ export class InstructionSegment extends BaseObject {
     // context data segment length
     write16bit(image, baseAddress + 2, objTable.objects[objTable.getObjectIndex(`processContext${this.#contextIdx}Data`) - 1].size - 1);
     // operand stack segment length  + initial instruction offset (in bits)
-    write32bit(image, baseAddress + 4, 0x0 | ((INSTRUCTION_HEADER_SIZE * 8) << 16));
+    const operandStackSegment = objTable.objects[objTable.getObjectIndex(`processContext${this.#contextIdx}Stack`) - 1];
+    write32bit(image, baseAddress + 4, (operandStackSegment.size - 1) | ((INSTRUCTION_HEADER_SIZE * 8) << 16));
     // constants segment index + fault object index
     write32bit(image, baseAddress + 8, 0x0);
     // trace object index

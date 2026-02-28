@@ -69,25 +69,30 @@ const printAccessLog = async (objects) => {
 };
 
 const main = async () => {
+  const programName = args['--program'] || 'dummy';
+
   if (args.hasOwnProperty('--print-image')) {
-    const { image } = buildImage();
+    const { image } = buildImage(programName);
     console.log(`RAM Image dump:`);
     printHexDump(image);
     return;
   }
 
-  await sbc_openPort();
+  await sbc_openPort((addr, data) => {
+    console.log(`[!] Interconnect space write from i432: addr=${toHex(addr)}, data=${toHex(data)}`);
+  });
+
   console.log('[+] Connected to SBC');
 
   await sbc_waitOnline();
   console.log('[+] SBC is online');
 
   console.log('[~] Building image...');
-  const { image, objects } = buildImage();
+  const { image, objects } = buildImage(programName);
   await sbc_bulkWrite(image);
   console.log(`[+] ROM image has been written to SBC, size = ${image.length} bytes`);
 
-  await sbc_startGdp({ localCommsAddress: objects.find(({ ref }) => ref === 'processorLocalComms').address });
+  await sbc_startGdp();
   console.log('[+] GDP has been started');
 
   // wait some time to let GDP work

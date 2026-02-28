@@ -23,7 +23,7 @@ export class ProcessorDataSegment extends BaseObject {
                           //   0001 - Idle
                           //   0010 - process selection
                           //   0011 - process binding
-                          //   0100 - process exectuion
+                          //   0100 - process execution
                           //   0101 - process suspension
         | (0b00 << 20)    // dispatching mode, 00 = normal mode, 01 - alarm mode, 10 - reconfig mode, 11 - diagnostic mode
         | (0b1 << 22)     // stopped by IPC, 0 = non-stopped, should execute a process

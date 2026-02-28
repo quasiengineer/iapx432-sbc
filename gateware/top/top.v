@@ -203,13 +203,31 @@ module top (
     .s_valid(sram_valid)
   );
 
+  wire [7:0] uart_tx_ctrl_data;
+  wire uart_tx_ctrl_req;
+  wire [7:0] uart_tx_gdp_data;
+  wire uart_tx_gdp_req;
+  wire uart_tx_busy;
+  uart_tx_mux uart_mux (
+    .uart_clk(clk_50),
+    .rst_n(rst_n),
+    .data0(uart_tx_ctrl_data),
+    .req0(uart_tx_ctrl_req),
+    .data1(uart_tx_gdp_data),
+    .req1(uart_tx_gdp_req),
+    .tx_busy(uart_tx_busy),
+    .uart_tx_io(UART_TX)
+  );
+
   control_interface #(
     .WRITE_LOG_ADDR_WIDTH(WRITE_LOG_ADDR_WIDTH)
   ) control_interface (
     .clk(clk_50),
     .rst_n(rst_n),
     .uart_rx_io(UART_RX),
-    .uart_tx_io(UART_TX),
+    .uart_tx_data(uart_tx_ctrl_data),
+    .uart_tx_req(uart_tx_ctrl_req),
+    .uart_tx_busy(uart_tx_busy),
     .sram_req(sram_u_req),
     .sram_wr(sram_u_wr),
     .sram_rd(sram_u_rd),
@@ -227,8 +245,7 @@ module top (
     .u_wlog_addr(u_wlog_addr),
     .u_wlog_rd(u_wlog_rd),
     .u_wlog_data_out(u_wlog_data_out),
-    .gdp_trigger_init(gdp_trigger_init),
-    .gdp_local_comms_addr(gdp_local_comms_addr)
+    .gdp_trigger_init(gdp_trigger_init)
   );
 
   // CDC bridge from 5 MHz GDP to 125 MHz SRAM (port0), it's faster CDC because it doesn't work on slow clock at all
@@ -253,7 +270,6 @@ module top (
 
   // GDP wiring
   reg gdp_trigger_init;
-  reg [15:0] gdp_local_comms_addr;
   gdp_interface gdp (
     .u_clk(clk_50),
     .rst_n(rst_n),
@@ -268,6 +284,9 @@ module top (
     .clr_io(CLR),
     .init_io(INIT),
     .ics_io(ICS),
+    .uart_send(uart_tx_gdp_req),
+    .uart_data(uart_tx_gdp_data),
+    .uart_busy(uart_tx_busy),
     .sram_req(sram_g_req),
     .sram_wr(sram_g_wr),
     .sram_rd(sram_g_rd),
@@ -281,8 +300,7 @@ module top (
     .wlog_wr(wlog_wr),
     .wlog_data(wlog_data),
     .wlog_addr(wlog_addr),
-    .trigger_init(gdp_trigger_init),
-    .local_comms_addr(gdp_local_comms_addr)
+    .trigger_init(gdp_trigger_init)
   );
 
 endmodule

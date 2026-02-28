@@ -4,8 +4,11 @@ import { BaseObject } from "./baseObject.js";
 import { INSTRUCTION_HEADER_SIZE } from "./instructionSegment.js";
 
 export class ContextDataSegment extends BaseObject {
+  #sp;
+
   constructor(ref, params) {
     super(ref, params);
+    this.#sp = params.sp || 0;
   }
 
   get isAccess() {
@@ -21,8 +24,8 @@ export class ContextDataSegment extends BaseObject {
   }
 
   serialize(image, baseAddress) {
-    // status + SP
-    write32bit(image, baseAddress, 0);
+    // status + SP (in bytes)
+    write32bit(image, baseAddress, this.#sp << 16);
     // current instruction object index + instruction pointer (in bits)
     write32bit(image, baseAddress + 4, 0 | ((INSTRUCTION_HEADER_SIZE * 8) << 16));
 

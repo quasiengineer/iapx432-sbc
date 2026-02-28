@@ -1,11 +1,22 @@
 import { BaseObject } from '../objects/baseObject.js';
-import { writeObjectTableDescriptor, SEGMENT_DESCRIPTOR_SIZE, SEGMENT_TYPE, updateSegmentAddress } from './objectTableDesciptors.js';
+
+import {
+  writeStorageDescriptor,
+  writeInterconnectDescriptor,
+  updateSegmentAddress,
+  SEGMENT_DESCRIPTOR_SIZE,
+  SEGMENT_TYPE,
+} from './objectTableDesciptors.js';
 
 export class ObjectTable extends BaseObject {
   #objects = [];
 
   addObject(object) {
     this.#objects.push(object);
+  }
+
+  addInterconnectSegment(ref, address, length) {
+    this.#objects.push({ ref, address, length, type: 'interconnect' });
   }
 
   getObjectIndex(ref) {
@@ -38,14 +49,18 @@ export class ObjectTable extends BaseObject {
   #serializeToImage(image, baseAddress, objects) {
     // skip header
     let address = baseAddress + SEGMENT_DESCRIPTOR_SIZE;
-    // put descriptors
+    // put storage descriptors
     for (const object of this.#objects) {
-      writeObjectTableDescriptor(image, address, {
-        isAccess: object.isAccess,
-        address,
-        length: object.size,
-        type: object.type,
-      });
+      if (object.type === 'interconnect') {
+        writeInterconnectDescriptor(image, address, { address: object.address, length: object.length });
+      } else {
+        writeStorageDescriptor(image, address, {
+          isAccess: object.isAccess,
+          address,
+          length: object.size,
+          type: object.type,
+        });
+      }
 
       address += SEGMENT_DESCRIPTOR_SIZE;
     }
@@ -53,10 +68,10 @@ export class ObjectTable extends BaseObject {
     // put object tables and their objects
     for (const object of this.#objects) {
       // object table directory has reference to itself, so skip it
-      if (object !== this) {
+      if (object !== this && !object.address) {
         object.address = address;
         objects.push(object);
-        address += object.serialize(image, address, objects);
+        address += object.serialize(image, address, objects) || 0;
       }
     }
 

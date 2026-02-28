@@ -8,53 +8,56 @@ const COMMANDS = {
   SRAM_BULK_WRITE: 0x01,
   SRAM_READ: 0x03,
   LOG_READ: 0x11,
-  START_GDP: 0x20,
+  START_GDP: 0x81,
   PING: 0x80,
   WLOG_READ: 0x90,
 };
 
-const ACK_REPLY = 0x01;
+const FPGA_OPCODES = {
+  ACK: 0x01,
+  I432_INTERCONNECT_WRITE: 0x02,
+};
 
 class SBC {
   #eventBus;
   #port;
-  #responseBuffer;
+  #buffer;
+  #waitForResponse;
+  #expectedResponseLength;
 
-  constructor(SerialPort) {
+  constructor(SerialPort, onInterconnectWrite) {
     this.#eventBus = new EventEmitter();
     this.#port = new SerialPort({ path: PORT_NAME, baudRate: BAUD_RATE, autoOpen: false });
-    this.#responseBuffer = {
-      remaining: 0,
-      result: [],
-    };
+    this.#buffer = [];
+    this.#waitForResponse = false;
 
-    this.#port.on('data', async (data) => {
-      const { remaining, result } = this.#responseBuffer;
+    this.#port.on('data', (data) => {
+      this.#buffer.push(...data);
 
-      if (remaining) {
-        // wait for more data
-        if (remaining >= data.length) {
-          result.push(...data);
-          this.#responseBuffer.remaining -= data.length;
-          return;
+      // Process response if waiting
+      if (this.#waitForResponse && this.#buffer.length >= this.#expectedResponseLength + 1) {
+        if (this.#buffer[this.#expectedResponseLength] !== FPGA_OPCODES.ACK) {
+          throw new Error(`Expected ACK from FPGA, got ${this.#buffer[this.#expectedResponseLength]}`);
         }
 
-        if (data.length != remaining + 1) {
-          throw new Error('Unexpected data size');
-        }
-
-        result.push(...data.subarray(0, remaining));
-        this.#responseBuffer.remaining = 0;
-        if (data[remaining] !== ACK_REPLY) {
-          throw new Error('Expected ACK byte');
-        }
-      } else {
-        if (data.length !== 1 || data[0] !== ACK_REPLY) {
-          throw new Error('Expected only ACK byte');
-        }
+        this.#waitForResponse = false;
+        const response = this.#buffer.splice(0, this.#expectedResponseLength);
+        this.#buffer.splice(0, 1); // remove ACK
+        this.#eventBus.emit('ack', response);
       }
 
-      this.#eventBus.emit('ack');
+      if (!this.#waitForResponse && this.#buffer.length > 0) {
+        // Check for unknown opcode
+        if (this.#buffer[0] !== FPGA_OPCODES.I432_INTERCONNECT_WRITE) {
+          throw new Error(`Unknown opcode from FPGA, code = ${this.#buffer[0]}`);
+        }
+
+        // Process target-initiated transfers
+        while (this.#buffer.length >= 5 && this.#buffer[0] === FPGA_OPCODES.I432_INTERCONNECT_WRITE) {
+          const msg = this.#buffer.splice(0, 5);
+          onInterconnectWrite((msg[1] << 8) | msg[2], (msg[3] << 8) | msg[4]);
+        }
+      }
     });
   }
 
@@ -62,15 +65,15 @@ class SBC {
     return new Promise((resolve, reject) => {
       let timeoutId = null;
 
-      this.#responseBuffer.result = [];
-      this.#responseBuffer.remaining = expectedRespone;
+      this.#expectedResponseLength = expectedRespone;
+      this.#waitForResponse = true;
 
-      this.#eventBus.once('ack', () => {
+      this.#eventBus.once('ack', (data) => {
         if (timeoutId) {
           clearTimeout(timeoutId);
         }
 
-        resolve(this.#responseBuffer.result);
+        resolve(data);
       });
 
       this.#port.write(Buffer.from([opcode, ...(data ?? [])]), (err) => err && reject(err));
@@ -105,11 +108,8 @@ export async function sbc_ping() {
   return sbc?.sendCommand({ opcode: COMMANDS.PING });
 };
 
-export async function sbc_startGdp({ localCommsAddress }) {
-  return sbc?.sendCommand({
-    opcode: COMMANDS.START_GDP,
-    data: [localCommsAddress >> 8, localCommsAddress & 0xFF],
-  });
+export async function sbc_startGdp() {
+  return sbc?.sendCommand({ opcode: COMMANDS.START_GDP });
 };
 
 export async function sbc_readLog(addr) {
@@ -142,10 +142,10 @@ export async function sbc_bulkWrite(data) {
   return sbc?.sendCommand({ opcode: COMMANDS.SRAM_BULK_WRITE, data: [wordsToWrite >> 8, wordsToWrite & 0xFF, ...writes], timeout: null });
 };
 
-export async function sbc_openPort() {
+export async function sbc_openPort(onInterconnectWrite) {
   // avoid initialization delays due regular import if we don't need to use the port
   const { SerialPort } = await import('serialport');
-  sbc = new SBC(SerialPort);
+  sbc = new SBC(SerialPort, onInterconnectWrite);
   await sbc.open();
 };
 

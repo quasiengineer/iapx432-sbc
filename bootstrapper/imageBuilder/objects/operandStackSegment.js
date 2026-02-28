@@ -3,10 +3,13 @@ import { BaseObject } from "./baseObject.js";
 
 export class OperandStackSegment extends BaseObject {
   #size;
+  #data;
 
   constructor(ref, params) {
     super(ref, params);
+
     this.#size = params.size;
+    this.#data = params.data;
   }
 
   get isAccess() {
@@ -21,7 +24,11 @@ export class OperandStackSegment extends BaseObject {
     return this.#size;
   }
 
-  serialize() {
+  serialize(image, baseAddress) {
+    for (let i = 0, address = baseAddress; i < this.#data.length; i++, address++) {
+      image[address] = this.#data[i];
+    }
+
     return this.size;
   }
 }

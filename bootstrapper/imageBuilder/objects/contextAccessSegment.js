@@ -4,8 +4,12 @@ import { SEGMENT_TYPE } from "../storage/objectTableDesciptors.js";
 import { BaseObject } from "./baseObject.js";
 
 export class ContextAccessSegment extends BaseObject {
+  #objectsRefs;
+
   constructor(ref, params) {
     super(ref, params);
+
+    this.#objectsRefs = params.objectsRefs || [];
   }
 
   get isAccess() {
@@ -17,7 +21,7 @@ export class ContextAccessSegment extends BaseObject {
   }
 
   get size() {
-    return 10 * ACCESS_DESCRIPTOR_SIZE;
+    return (10 + this.#objectsRefs.length) * ACCESS_DESCRIPTOR_SIZE;
   }
 
   serialize(image, baseAddress) {
@@ -45,8 +49,13 @@ export class ContextAccessSegment extends BaseObject {
     // domain of definition
     write32bit(image, baseAddress + 0x20, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Domain`)));
     // context's operand stack
-    // write32bit(image, baseAddress + 0x24, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Stack`)));
-    write32bit(image, baseAddress + 0x24, 0);
+    write32bit(image, baseAddress + 0x24, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Stack`)));
+    // write32bit(image, baseAddress + 0x24, 0);
+
+    // access descriptors for objects
+    for (let i = 0; i < this.#objectsRefs.length; i++) {
+      write32bit(image, baseAddress + 0x28 + i * ACCESS_DESCRIPTOR_SIZE, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(this.#objectsRefs[i])));
+    }
 
     return this.size;
   }
