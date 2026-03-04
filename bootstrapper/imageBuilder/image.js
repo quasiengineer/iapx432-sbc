@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { compile } from './compiler/compiler.js';
 import { ObjectTableDirectory } from './storage/objectTableDirectory.js';
+import { SEGMENT_TYPE } from './storage/objectTableDesciptors.js';
 import { ObjectTable } from './storage/objectTable.js';
 import { ProcessorAccessSegment } from './objects/processorAccessSegment.js';
 import { ProcessorDataSegment } from './objects/processorDataSegment.js';
@@ -16,11 +17,36 @@ import { ProcessDataSegment } from './objects/processDataSegment.js';
 import { ProcessAccessSegment } from './objects/processAccessSegment.js';
 import { ContextDataSegment } from './objects/contextDataSegment.js';
 import { ContextAccessSegment } from './objects/contextAccessSegment.js';
-import { OperandStackSegment } from './objects/operandStackSegment.js';
+import { GenericDataSegment } from './objects/genericDataSegment.js';
 import { DomainSegment } from './objects/domainSegment.js';
 import { InstructionSegment } from './objects/instructionSegment.js';
 
+const buildVarsSegmentContent = (vars) => {
+  const data = [];
+  for (const varName in vars) {
+    const { size, data: varData } = vars[varName];
+    const extendedData = [...varData];
+    while (extendedData.length < size) {
+      extendedData.push(0);
+    }
+    data.push(...extendedData);
+  }
+
+  // padding
+  if (data.length % 2 !== 0) {
+    data.push(0);
+  }
+
+  return data;
+};
+
 const buildImage = (programName) => {
+  // read and compile program
+  const dirName = path.dirname(fileURLToPath(import.meta.url));
+  const sourceCode = fs.readFileSync(path.resolve(`${dirName}/programs/${programName}.i432`), 'utf8');
+  const { bytecode, stack, data, instructionsMap } = compile(sourceCode);
+  const varsData = buildVarsSegmentContent(data.vars);
+
   const processorObjectTable = new ObjectTable('objectTableProcessor');
   // empty, would not be used
   const tempDirObjectTable = new ObjectTable('objectTableTemp');
@@ -37,7 +63,7 @@ const buildImage = (programName) => {
   processorObjectTable.addObject(new ProcessorAccessSegment('processorAccess', { directoryObjectTable }));
 
   // interconnect segment for UART output
-  mainObjectTable.addInterconnectSegment('uartInterconnect', 0x2000, 0x10);
+  mainObjectTable.addInterconnectSegment('uartInterconnect', 0x1000, 0x10);
 
   // here is all objects, except processor access segments
   mainObjectTable.addObject(new ProcessorDataSegment('processorData'));
@@ -54,23 +80,15 @@ const buildImage = (programName) => {
   mainObjectTable.addObject(new CarrierAccessSegment('processCarrierAccess', { directoryObjectTable, carriedObjectRef: 'processAccess' }));
   mainObjectTable.addObject(new ProcessDataSegment('processData'));
   mainObjectTable.addObject(new ProcessAccessSegment('processAccess', { directoryObjectTable }));
-  mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable, objectsRefs: ['uartInterconnect'] }));
-  mainObjectTable.addObject(new ContextDataSegment('processContext0Data', { sp: 12 }));
-  // XXX: stack contains
-  //   - object selector to AD for uartInterconnect segment (EAS = 0, slot = 10)
-  //   - offset in interconnect segment
-  //   - data to be sent
-  mainObjectTable.addObject(new OperandStackSegment('processContext0Stack', { size: 0x20, data: [0x02, 0x00, 0x00, 0x00, 10 << 2, 0x00, 0xaa, 0x55, 0x00, 0x00, 10 << 2, 0x00] }));
+  mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable, objectsRefs: ['uartInterconnect', 'processContext0Vars'] }));
+  mainObjectTable.addObject(new ContextDataSegment('processContext0Data', { sp: stack.data?.length || 0 }));
+  mainObjectTable.addObject(new GenericDataSegment('processContext0Stack', { size: stack.size, data: stack.data, type: SEGMENT_TYPE.OPERAND_STACK_DATA }));
+  mainObjectTable.addObject(new GenericDataSegment('processContext0Vars', { data: varsData, type: SEGMENT_TYPE.GENERIC_DATA }));
   mainObjectTable.addObject(new DomainSegment('processContext0Domain', { directoryObjectTable, instructionsRefs: ['processContext0Instruction0'] }));
-
-  // read and compile program
-  const dirName = path.dirname(fileURLToPath(import.meta.url));
-  const sourceCode = fs.readFileSync(path.resolve(`${dirName}/programs/${programName}.i432`), 'utf8');
-  const instructions = compile(sourceCode);
-  mainObjectTable.addObject(new InstructionSegment('processContext0Instruction0', { directoryObjectTable, instructions, contextIdx: 0 }));
+  mainObjectTable.addObject(new InstructionSegment('processContext0Instruction0', { directoryObjectTable, instructions: bytecode, contextIdx: 0 }));
 
   const objects = [];
-  return { image: objectDirectory.serialize(objects), objects };
+  return { image: objectDirectory.serialize(objects), objects, instructionsMap };
 };
 
 export {

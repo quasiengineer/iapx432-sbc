@@ -1,0 +1,23 @@
+.stack {
+  size = 0x10
+  data = []
+}
+
+.data {
+  msgIdx = { size = 2, data = [0x06, 0x00] }
+  # reversed, because we start sending data from the end
+  msg = { size = 12, data = [0x21, 0x64, 0x6c, 0x72, 0x6f, 0x57, 0x20, 0x6f, 0x6c, 0x6c, 0x65, 0x48] }
+
+  # variables for sending data via UART
+  interconnectRegUart = { size = 2, data = [0x02, 0x00] }
+  interconnectSegmentSelector = { size = 2, data = [0x28, 0x00] }
+}
+
+sendTwoChars:
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegUart $data[msgIdx]
+  # array is iterated in range [msgLen ... 1], because we want to reference uart payload from base 0
+  # and need to skip element at index 0 (it's reserved for uart payload length)
+  DECREMENT_SHORT_ORD msgIdx msgIdx
+  EQUAL_ZERO_SHORT_ORD msgIdx $st0
+  BRANCH_FALSE $st0 sendTwoChars
+  RETURN_FROM_CONTEXT

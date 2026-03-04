@@ -1,4 +1,4 @@
-import { printAccessLogEntry, printHexDump, toHex } from './format.js';
+import { printAccessLogEntry, printHexDump, toHex, printFaultInfo } from './format.js';
 import { buildImage } from './imageBuilder/image.js';
 import {
   sbc_bulkWrite,
@@ -28,9 +28,9 @@ const sbc_waitOnline = async () => {
   throw new Error('SBC not responding');
 };
 
-const args = process.argv.slice(2).reduce((acc, k, i, arr) => i % 2 === 0 ? {...acc, [k]: arr[i + 1]} : acc, {});
+const args = Object.fromEntries(process.argv.slice(2).map((arg) => arg.split('=')));
 
-const printAccessLog = async (objects) => {
+const printAccessLog = async (objects, instructionsMap) => {
   // read write log (operations to write data to memory)
   const writeLogRaw = await sbc_readWLog();
   const writeLog = [];
@@ -47,11 +47,13 @@ const printAccessLog = async (objects) => {
     if (!writeMap.has(accessLogRef)) {
       writeMap.set(accessLogRef, []);
     }
-    writeMap.get(accessLogRef).push({ data: toHex(data, 4, true), writeOffset });
+    writeMap.get(accessLogRef).push({ data, writeOffset });
   }
 
   // read access log (any operations on the bus)
   const startAddr = parseInt(args['--log-skip']) || 0;
+  const processDataFaultArea = objects.find(obj => obj.ref === 'processData').address + 0x68;
+  const faultInfo = [];
   console.log(`[+] Access log (skipped ${startAddr} entries):`);
   for (let logAddr = startAddr; logAddr < (1 << 10); logAddr++) {
     const response = await sbc_readLog(logAddr);
@@ -59,6 +61,20 @@ const printAccessLog = async (objects) => {
     const spec = response[2];
     if (spec === 0x00 && accessAddr === 0x0000) {
       break;
+    }
+
+    if ((spec & 0b1100_0000) === 0b0100_0000 && accessAddr >= processDataFaultArea && accessAddr <= processDataFaultArea + 0x24) {
+      // collect process fault info
+      const writtenData = writeMap.get(logAddr).sort((a, b) => b.writeOffset - a.writeOffset).map(({ data }) => data);
+      for (let faultAreaOffset = accessAddr - processDataFaultArea, i = 0; i < writtenData.length; faultAreaOffset += 2, i++) {
+        faultInfo[faultAreaOffset >> 1] = writtenData[i];
+      }
+    } else {
+      // stop printing logs when we have collected fault info
+      if (faultInfo.length > 0) {
+        printFaultInfo(faultInfo, instructionsMap);
+        break;
+      }
     }
 
     printAccessLogEntry(logAddr, spec, accessAddr, objects, writeMap);
@@ -78,9 +94,10 @@ const main = async () => {
     return;
   }
 
-  await sbc_openPort((addr, data) => {
-    console.log(`[!] Interconnect space write from i432: addr=${toHex(addr)}, data=${toHex(data)}`);
-  });
+  await sbc_openPort(
+    (addr, data) => console.log(`[!] Interconnect space write from i432: addr=${toHex(addr)}, data=${toHex(data)}`),
+    (data, ticks) => console.log(`[!] Write to special address 0x1000: data=${toHex(data)}, ticks=${ticks}`),
+  );
 
   console.log('[+] Connected to SBC');
 
@@ -88,7 +105,7 @@ const main = async () => {
   console.log('[+] SBC is online');
 
   console.log('[~] Building image...');
-  const { image, objects } = buildImage(programName);
+  const { image, objects, instructionsMap } = buildImage(programName);
   await sbc_bulkWrite(image);
   console.log(`[+] ROM image has been written to SBC, size = ${image.length} bytes`);
 
@@ -99,7 +116,7 @@ const main = async () => {
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   console.log('[~] Read access log after 2s of execution.');
-  await printAccessLog(objects);
+  await printAccessLog(objects, instructionsMap);
 };
 
 main()

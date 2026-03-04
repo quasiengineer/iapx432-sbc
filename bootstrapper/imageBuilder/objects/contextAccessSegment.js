@@ -33,7 +33,7 @@ export class ContextAccessSegment extends BaseObject {
     // data segment
     write32bit(image, baseAddress + 0x00, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Data`)));
     // constants data segment
-    write32bit(image, baseAddress + 0x04, 0);
+    write32bit(image, baseAddress + 0x04, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Vars`)));
     // previous context
     write32bit(image, baseAddress + 0x08, 0);
     // message object
@@ -50,7 +50,6 @@ export class ContextAccessSegment extends BaseObject {
     write32bit(image, baseAddress + 0x20, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Domain`)));
     // context's operand stack
     write32bit(image, baseAddress + 0x24, createAccessDescriptor(objTableIdx, objTable.getObjectIndex(`processContext${idx}Stack`)));
-    // write32bit(image, baseAddress + 0x24, 0);
 
     // access descriptors for objects
     for (let i = 0; i < this.#objectsRefs.length; i++) {

@@ -1,15 +1,17 @@
 import { SEGMENT_TYPE } from "../storage/objectTableDesciptors.js";
 import { BaseObject } from "./baseObject.js";
 
-export class OperandStackSegment extends BaseObject {
+export class GenericDataSegment extends BaseObject {
   #size;
   #data;
+  #type;
 
   constructor(ref, params) {
     super(ref, params);
 
-    this.#size = params.size;
-    this.#data = params.data;
+    this.#data = params.data || [];
+    this.#size = params.size || params.data.length;
+    this.#type = params.type || SEGMENT_TYPE.GENERIC_DATA;
   }
 
   get isAccess() {
@@ -17,7 +19,7 @@ export class OperandStackSegment extends BaseObject {
   }
 
   get type() {
-    return SEGMENT_TYPE.OPERAND_STACK_DATA;
+    return this.#type;
   }
 
   get size() {
@@ -26,6 +28,10 @@ export class OperandStackSegment extends BaseObject {
 
   serialize(image, baseAddress) {
     for (let i = 0, address = baseAddress; i < this.#data.length; i++, address++) {
+      if (this.#data[i] > 0xFF) {
+        throw new Error(`Data value ${this.#data[i]} is too large for a byte`);
+      }
+
       image[address] = this.#data[i];
     }
 

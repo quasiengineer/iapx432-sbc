@@ -61,8 +61,8 @@ const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap) => {
   const modifierStr = accessType === 1 ? 'interconnect register' : (MEMORY_ACCESS_MODIFIER_MAP[modifier] || 'invalid');
 
   const writeData = writesMap.has(logAddr) ? writesMap.get(logAddr) : [];
-  const formattedWriteData = writeData.sort((a, b) => b.writeOffset - a.writeOffset).map(({ data }) => data).join(' ') || 'unknown';
-  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}'${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects)}${operation === 0 ? '' : ` <${formattedWriteData}>`}`);
+  const formattedWriteData = writeData.sort((a, b) => b.writeOffset - a.writeOffset).map(({ data }) => toHex(data, 4, true)).join(' ') || 'unknown';
+  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}'${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects)}${(operation === 0 || accessType === 1) ? '' : ` <${formattedWriteData}>`}`);
 };
 
 const printHexDump = (image) => {
@@ -75,8 +75,54 @@ const printHexDump = (image) => {
   }
 }
 
+const decodeMemoryAccessFault = (faultCode) => {
+  const faultType = (faultCode & 0x3800) >> 11;
+  const opType = (faultCode & 0x0080) === 1 ? 'write' : 'read';
+  if ((faultType & 0x4) === 0) {
+    return `${opType}, memory access`;
+  }
+
+  switch (faultType) {
+    case 0b100:
+      return `${opType}, interconnect access`;
+    case 0b101:
+      return `${opType}, access segment access`;
+    case 0b111:
+      return `${opType}, operand stack access`;
+    default:
+      return 'unknown';
+  }
+}
+
+const decodeFaultCode = (faultCode) => {
+  const faultType = ((faultCode & 0xC000) >> 12) | ((faultCode & 0x0060) >> 5);
+  switch (faultType) {
+    case 0b0101: {
+      return `segment overflow (${decodeMemoryAccessFault(faultCode)})`;
+    }
+
+    default:
+      return 'unknown';
+  }
+};
+
+const printFaultInfo = (faultInfo, instructionsMap) => {
+  console.log('[-] Process fault info:');
+  console.log(`  Fault instruction segment index: ${toHex(faultInfo[0])}`);
+  console.log(`  Post-IP: ${toHex(faultInfo[1])} <${instructionsMap.get(faultInfo[1]) || 'unknown'}>`);
+  console.log(`  Pre-IP: ${toHex(faultInfo[2])} <${instructionsMap.get(faultInfo[2]) || 'unknown'}>`);
+  console.log(`  Post-SP: ${toHex(faultInfo[3])}`);
+  console.log(`  Pre-SP: ${toHex(faultInfo[4])}`);
+  console.log(`  Fault status: ${toHex(faultInfo[5])}`);
+  console.log(`  Operator ID: ${toHex(faultInfo[6])}`);
+  console.log(`  Fault Code: ${toHex(faultInfo[7])} <${decodeFaultCode(faultInfo[7])}>`);
+  console.log(`  Fault Object Selector: ${toHex(faultInfo[8])}`);
+  console.log(`  Fault Displacement: ${toHex(faultInfo[9])}`);
+}
+
 export {
   printHexDump,
+  printFaultInfo,
   printAccessLogEntry,
   toHex,
 };

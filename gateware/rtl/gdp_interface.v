@@ -58,6 +58,8 @@ module gdp_interface (
   reg fatal_recorded;
   reg [9:0] log_ref;
 
+  reg [47:0] tick_counter;
+
   reg spec_wr;
 
   // IPC register access
@@ -65,6 +67,7 @@ module gdp_interface (
   reg [15:0] interconn_reg_addr;
   reg interconn_reg_read;
   reg interconn_reg_write_trigger;
+  reg ipc_ticks_trigger;
 
   // for SRAM transfers
   reg [2:0] sram_transfer_cnt;
@@ -104,6 +107,7 @@ module gdp_interface (
       interconn_reg <= 16'b0;
       interconn_reg_addr <= 16'b0;
       log_ref <= 10'b0;
+      ipc_ticks_trigger <= 1'b0;
     end
     else begin
       log_wr  <= 1'b0;
@@ -186,7 +190,7 @@ module gdp_interface (
                 sram_transfer <= 1'b1;
                 // for write operation we need to decrement address by 1, because write operation one cycle behind
                 // read operation in terms of addressing (we read SRAM on T2, but write on T3)
-                sram_transfer_cnt <= spec[4:2] - (!spec_wr);
+                sram_transfer_cnt <= spec[4:2] == 3'b000 ? 3'b000 : (spec[4:2] - (!spec_wr));
                 // XXX: support only 16-bit space, so we don't care about high portion of address
                 // SRAM keeps 16-bit words, but GDP accesses bytes, so we need to shift address (discard LSB)
                 sram_addr <= {1'b0, acd_in[7:0], addr_low[7:1]} - spec_wr;
@@ -208,7 +212,6 @@ module gdp_interface (
             acd_oe  <= 1'b1;
           end
 
-          // TODO: support 1-byte reads properly
           if (sram_transfer) begin
             if (spec_wr) begin
               sram_wr    <= 1'b1;
@@ -218,7 +221,13 @@ module gdp_interface (
               wlog_addr <= {3'b0, sram_transfer_cnt[2:0], log_ref[9:0]};
             end
             else begin
-              acd_out <= sram_rdata;
+              if (spec[4:2] == 3'b000) begin
+                acd_out <= addr_low[0] ? {8'h00, sram_rdata[15:8]} : {8'h00, sram_rdata[7:0]};
+              end
+              else begin
+                acd_out <= sram_rdata;
+              end
+
               acd_oe  <= 1'b1;
             end
 
@@ -239,7 +248,10 @@ module gdp_interface (
 
         T3_STATE_WRITE_REG: begin
           interconn_reg <= acd_in;
-          interconn_reg_write_trigger <= ~interconn_reg_write_trigger;
+          if (interconn_reg_addr == 16'h1000)
+            ipc_ticks_trigger <= ~ipc_ticks_trigger;
+          else
+            interconn_reg_write_trigger <= ~interconn_reg_write_trigger;
           ics_io <= 1'b0;
           state <= IDLE;
         end
@@ -293,6 +305,19 @@ module gdp_interface (
     end
   end
 
+  // CLKB tick counter
+  always @(posedge clkb or negedge rst_n) begin
+    if (!rst_n) begin
+      tick_counter <= 48'b0;
+    end else begin
+      if (init_toggle_sync1 != init_toggle_sync2) begin
+        tick_counter <= 48'b0;
+      end else begin
+        tick_counter <= tick_counter + 1;
+      end
+    end
+  end
+
   /*
    * Send data via UART about IPC register write operation
    */
@@ -309,25 +334,27 @@ module gdp_interface (
     .uart_busy(uart_busy)
   );
 
-  reg [3:0] uart_state;
-  localparam UART_IDLE = 4'd0,
-             UART_SEND_OPCODE = 4'd1,
-             UART_SEND_OPCODE_GAP = 4'd2,
-             UART_SEND_ADDR_HI = 4'd3,
-             UART_SEND_ADDR_HI_GAP = 4'd4,
-             UART_SEND_ADDR_LO = 4'd5,
-             UART_SEND_ADDR_LO_GAP = 4'd6,
-             UART_SEND_DATA_HI = 4'd7,
-             UART_SEND_DATA_HI_GAP = 4'd8,
-             UART_SEND_DATA_LO = 4'd9;
+  reg [1:0] uart_state;
+  reg [7:0] send_bytes [0:8];
+  reg [3:0] send_counter;
+  reg [3:0] max_count;
+  localparam UART_IDLE = 1'd0,
+             UART_SENDING = 1'd1,
+             UART_GAP = 2'd2;
 
   reg ipc_reg_write_sync0, ipc_reg_write_sync1, ipc_reg_write_sync2;
+  reg ipc_ticks_reg_write_sync0, ipc_ticks_reg_write_sync1, ipc_ticks_reg_write_sync2;
   always @(posedge u_clk or negedge rst_n) begin
     if (!rst_n) begin
       ipc_reg_write_sync0 <= 1'b0;
       ipc_reg_write_sync1 <= 1'b0;
       ipc_reg_write_sync2 <= 1'b0;
+      ipc_ticks_reg_write_sync0 <= 1'b0;
+      ipc_ticks_reg_write_sync1 <= 1'b0;
+      ipc_ticks_reg_write_sync2 <= 1'b0;
       uart_state <= UART_IDLE;
+      send_counter <= 0;
+      max_count <= 0;
     end
     else begin
       // pulses
@@ -337,43 +364,49 @@ module gdp_interface (
       ipc_reg_write_sync1 <= ipc_reg_write_sync0;
       ipc_reg_write_sync2 <= ipc_reg_write_sync1;
 
+      ipc_ticks_reg_write_sync0 <= ipc_ticks_trigger;
+      ipc_ticks_reg_write_sync1 <= ipc_ticks_reg_write_sync0;
+      ipc_ticks_reg_write_sync2 <= ipc_ticks_reg_write_sync1;
+
       if (ipc_reg_write_sync1 != ipc_reg_write_sync2) begin
-        uart_state <= UART_SEND_OPCODE;
+        send_bytes[0] <= 8'h02;
+        send_bytes[1] <= interconn_reg_addr[15:8];
+        send_bytes[2] <= interconn_reg_addr[7:0];
+        send_bytes[3] <= interconn_reg[15:8];
+        send_bytes[4] <= interconn_reg[7:0];
+        send_counter <= 0;
+        max_count <= 4'd5;
+        uart_state <= UART_SENDING;
+      end
+      else if (ipc_ticks_reg_write_sync1 != ipc_ticks_reg_write_sync2) begin
+        send_bytes[0] <= 8'h03;
+        send_bytes[1] <= interconn_reg[15:8];
+        send_bytes[2] <= interconn_reg[7:0];
+        send_bytes[3] <= tick_counter[47:40];
+        send_bytes[4] <= tick_counter[39:32];
+        send_bytes[5] <= tick_counter[31:24];
+        send_bytes[6] <= tick_counter[23:16];
+        send_bytes[7] <= tick_counter[15:8];
+        send_bytes[8] <= tick_counter[7:0];
+        send_counter <= 0;
+        max_count <= 4'd9;
+        uart_state <= UART_SENDING;
       end
 
       case (uart_state)
-        UART_SEND_OPCODE: begin
-          uart_fifo_data <= 8'h02;
+        UART_SENDING: begin
+          uart_fifo_data <= send_bytes[send_counter];
           uart_fifo_req <= 1'b1;
-          uart_state <= UART_SEND_OPCODE_GAP;
+          uart_state <= UART_GAP;
+          send_counter <= send_counter + 1;
         end
-        UART_SEND_OPCODE_GAP: uart_state <= UART_SEND_ADDR_HI;
-
-        UART_SEND_ADDR_HI: begin
-          uart_fifo_data <= interconn_reg_addr[15:8];
-          uart_fifo_req <= 1'b1;
-          uart_state <= UART_SEND_ADDR_HI_GAP;
-        end
-        UART_SEND_ADDR_HI_GAP: uart_state <= UART_SEND_ADDR_LO;
-
-        UART_SEND_ADDR_LO: begin
-          uart_fifo_data <= interconn_reg_addr[7:0];
-          uart_fifo_req <= 1'b1;
-          uart_state <= UART_SEND_ADDR_LO_GAP;
-        end
-        UART_SEND_ADDR_LO_GAP: uart_state <= UART_SEND_DATA_HI;
-
-        UART_SEND_DATA_HI: begin
-          uart_fifo_data <= interconn_reg[15:8];
-          uart_fifo_req <= 1'b1;
-          uart_state <= UART_SEND_DATA_HI_GAP;
-        end
-        UART_SEND_DATA_HI_GAP: uart_state <= UART_SEND_DATA_LO;
-
-        UART_SEND_DATA_LO: begin
-          uart_fifo_data <= interconn_reg[7:0];
-          uart_fifo_req <= 1'b1;
-          uart_state <= UART_IDLE;
+        UART_GAP: begin
+          if (send_counter == max_count) begin
+            uart_state <= UART_IDLE;
+            send_counter <= 0;
+          end else begin
+            uart_state <= UART_SENDING;
+          end
         end
       endcase
     end
