@@ -1,0 +1,13 @@
+{
+  "files.associations": {
+    "*.ejs": "javascript",
+    "atomic": "cpp",
+    "cstdint": "cpp",
+    "stop_token": "cpp",
+    "type_traits": "cpp",
+    "cstdlib": "cpp",
+    "mutex": "cpp",
+    "signal.h": "c",
+    "stdlib.h": "c"
+  }
+}

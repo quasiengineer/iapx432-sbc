@@ -17,27 +17,27 @@ const FPGA_OPCODES = {
   ACK: 0x01,
   I432_INTERCONNECT_WRITE: 0x02,
   I432_WRITE_WITH_TICKS: 0x03,
+  I432_FATAL: 0x04,
 };
 
 class SBC {
   #eventBus;
   #port;
-  #buffer;
-  #waitForResponse;
+  #buffer = [];
+  #waitForResponse = false;
   #expectedResponseLength;
+  #fatal = false;
 
   constructor(SerialPort, onInterconnectWrite, onWriteWithTicks) {
     this.#eventBus = new EventEmitter();
     this.#port = new SerialPort({ path: PORT_NAME, baudRate: BAUD_RATE, autoOpen: false });
-    this.#buffer = [];
-    this.#waitForResponse = false;
 
     this.#port.on('data', (data) => {
       this.#buffer.push(...data);
 
-      let bufferEvaluated = false;
-      while (!bufferEvaluated) {
-        bufferEvaluated = true;
+      let bufferUpdated = true;
+      while (bufferUpdated) {
+        bufferUpdated = false;
 
         // Process response if waiting
         if (this.#waitForResponse && this.#buffer.length >= this.#expectedResponseLength + 1) {
@@ -49,28 +49,36 @@ class SBC {
           const response = this.#buffer.splice(0, this.#expectedResponseLength);
           this.#buffer.splice(0, 1); // remove ACK
           this.#eventBus.emit('ack', response);
-          bufferEvaluated = false;
+          bufferUpdated = true;
         }
 
         if (!this.#waitForResponse && this.#buffer.length > 0) {
           // Check for unknown opcode
-          if (this.#buffer[0] !== FPGA_OPCODES.I432_INTERCONNECT_WRITE && this.#buffer[0] !== FPGA_OPCODES.I432_WRITE_WITH_TICKS) {
-            throw new Error(`Unknown opcode from FPGA, code = ${this.#buffer[0]}`);
+          const opcode = this.#buffer[0];
+          if (![FPGA_OPCODES.I432_INTERCONNECT_WRITE, FPGA_OPCODES.I432_WRITE_WITH_TICKS, FPGA_OPCODES.I432_FATAL].includes(opcode)) {
+            throw new Error(`Unknown opcode from FPGA, code = ${opcode}`);
           }
 
           // Process target-initiated transfers
-          while (this.#buffer.length >= 5 && this.#buffer[0] === FPGA_OPCODES.I432_INTERCONNECT_WRITE) {
+          if (this.#buffer.length >= 5 && opcode === FPGA_OPCODES.I432_INTERCONNECT_WRITE) {
             const msg = this.#buffer.splice(0, 5);
             onInterconnectWrite((msg[1] << 8) | msg[2], (msg[3] << 8) | msg[4]);
-            bufferEvaluated = false;
+            bufferUpdated = true;
           }
 
-          while (this.#buffer.length >= 9 && this.#buffer[0] === FPGA_OPCODES.I432_WRITE_WITH_TICKS) {
+          if (this.#buffer.length >= 9 && opcode === FPGA_OPCODES.I432_WRITE_WITH_TICKS) {
             const msg = this.#buffer.splice(0, 9);
             const data = (msg[1] << 8) | msg[2];
             const ticks = (BigInt(msg[3]) << 40n) | (BigInt(msg[4]) << 32n) | (BigInt(msg[5]) << 24n) | (BigInt(msg[6]) << 16n) | (BigInt(msg[7]) << 8n) | BigInt(msg[8]);
             onWriteWithTicks(data, ticks);
-            bufferEvaluated = false;
+            bufferUpdated = true;
+          }
+
+          if (this.#buffer.length >= 1 && opcode === FPGA_OPCODES.I432_FATAL) {
+            this.#buffer.splice(0, 1); // remove fatal opcode
+            this.#eventBus.emit('fatal');
+            this.#fatal = true;
+            bufferUpdated = true;
           }
         }
       }
@@ -101,6 +109,18 @@ class SBC {
     });
   }
 
+  waitFatal() {
+    if (this.#fatal) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      this.#eventBus.once('fatal', () => {
+        resolve();
+      });
+    });
+  }
+
   open() {
     return new Promise((resolve, reject) => {
       this.#port.open((err) => {
@@ -126,6 +146,10 @@ export async function sbc_ping() {
 
 export async function sbc_startGdp() {
   return sbc?.sendCommand({ opcode: COMMANDS.START_GDP });
+};
+
+export async function sbc_waitFatal() {
+  return sbc?.waitFatal();
 };
 
 export async function sbc_readLog(addr) {

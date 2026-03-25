@@ -1,4 +1,6 @@
-module gdp_interface (
+module gdp_interface #(
+  parameter BUS_LOG_ADDR_WIDTH = 10
+)(
   input  wire u_clk,  // 50Mhz
   input  wire rst_n,
   output reg  led_io,
@@ -32,7 +34,7 @@ module gdp_interface (
   output reg         log_wr,
   output reg  [ 7:0] log_type,
   output reg  [15:0] log_addr,
-  input  wire [ 9:0] log_wr_ptr,
+  input  wire [BUS_LOG_ADDR_WIDTH-1:0] log_wr_ptr,
 
   // Write log writer (same clock domain)
   output reg        wlog_wr,
@@ -56,7 +58,7 @@ module gdp_interface (
   reg [7:0] spec;
   reg [4:0] init_cnt;
   reg fatal_recorded;
-  reg [9:0] log_ref;
+  reg [BUS_LOG_ADDR_WIDTH-1:0] log_ref;
 
   reg [47:0] tick_counter;
 
@@ -106,7 +108,7 @@ module gdp_interface (
       interconn_reg_write_trigger <= 1'b0;
       interconn_reg <= 16'b0;
       interconn_reg_addr <= 16'b0;
-      log_ref <= 10'b0;
+      log_ref <= {BUS_LOG_ADDR_WIDTH{1'b0}};
       ipc_ticks_trigger <= 1'b0;
     end
     else begin
@@ -218,7 +220,7 @@ module gdp_interface (
               sram_wdata <= acd_in;
               wlog_wr <= 1'b1;
               wlog_data <= acd_in;
-              wlog_addr <= {3'b0, sram_transfer_cnt[2:0], log_ref[9:0]};
+              wlog_addr <= {sram_transfer_cnt[2:0], {(16-BUS_LOG_ADDR_WIDTH-3){1'b0}}, log_ref[BUS_LOG_ADDR_WIDTH-1:0]};
             end
             else begin
               if (spec[4:2] == 3'b000) begin
@@ -261,7 +263,7 @@ module gdp_interface (
           sram_wr <= 1'b1;
           wlog_wr <= 1'b1;
           wlog_data <= {8'b0, acd_in[7:0]};
-          wlog_addr <= {6'b0, log_ref[9:0]};
+          wlog_addr <= {{(16-BUS_LOG_ADDR_WIDTH){1'b0}}, log_ref[BUS_LOG_ADDR_WIDTH-1:0]};
           ics_io <= 1'b0;
           state <= IDLE;
         end
@@ -344,6 +346,7 @@ module gdp_interface (
 
   reg ipc_reg_write_sync0, ipc_reg_write_sync1, ipc_reg_write_sync2;
   reg ipc_ticks_reg_write_sync0, ipc_ticks_reg_write_sync1, ipc_ticks_reg_write_sync2;
+  reg fatal_sync0, fatal_sync1, prev_fatal_sync;
   always @(posedge u_clk or negedge rst_n) begin
     if (!rst_n) begin
       ipc_reg_write_sync0 <= 1'b0;
@@ -352,6 +355,9 @@ module gdp_interface (
       ipc_ticks_reg_write_sync0 <= 1'b0;
       ipc_ticks_reg_write_sync1 <= 1'b0;
       ipc_ticks_reg_write_sync2 <= 1'b0;
+      fatal_sync0 <= 1'b0;
+      fatal_sync1 <= 1'b0;
+      prev_fatal_sync <= 1'b0;
       uart_state <= UART_IDLE;
       send_counter <= 0;
       max_count <= 0;
@@ -367,6 +373,10 @@ module gdp_interface (
       ipc_ticks_reg_write_sync0 <= ipc_ticks_trigger;
       ipc_ticks_reg_write_sync1 <= ipc_ticks_reg_write_sync0;
       ipc_ticks_reg_write_sync2 <= ipc_ticks_reg_write_sync1;
+
+      fatal_sync0 <= fatal_io;
+      fatal_sync1 <= fatal_sync0;
+      prev_fatal_sync <= fatal_sync1;
 
       if (ipc_reg_write_sync1 != ipc_reg_write_sync2) begin
         send_bytes[0] <= 8'h02;
@@ -390,6 +400,12 @@ module gdp_interface (
         send_bytes[8] <= tick_counter[7:0];
         send_counter <= 0;
         max_count <= 4'd9;
+        uart_state <= UART_SENDING;
+      end
+      else if (prev_fatal_sync && !fatal_sync1) begin
+        send_bytes[0] <= 8'h04;
+        send_counter <= 0;
+        max_count <= 4'd1;
         uart_state <= UART_SENDING;
       end
 

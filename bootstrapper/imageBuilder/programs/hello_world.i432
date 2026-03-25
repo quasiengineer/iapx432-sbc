@@ -17,7 +17,7 @@ sendTwoChars:
   MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegUart $data[msgIdx]
   # array is iterated in range [msgLen ... 1], because we want to reference uart payload from base 0
   # and need to skip element at index 0 (it's reserved for uart payload length)
-  DECREMENT_SHORT_ORD msgIdx msgIdx
-  EQUAL_ZERO_SHORT_ORD msgIdx $st0
+  DEC_2U msgIdx msgIdx
+  EQUAL_ZERO_2U msgIdx $st0
   BRANCH_FALSE $st0 sendTwoChars
   RETURN_FROM_CONTEXT

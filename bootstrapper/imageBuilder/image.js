@@ -24,12 +24,11 @@ import { InstructionSegment } from './objects/instructionSegment.js';
 const buildVarsSegmentContent = (vars) => {
   const data = [];
   for (const varName in vars) {
-    const { size, data: varData } = vars[varName];
-    const extendedData = [...varData];
-    while (extendedData.length < size) {
-      extendedData.push(0);
+    const { data: varData, offset } = vars[varName];
+    for (let currentOffset = data.length; currentOffset < offset; currentOffset++) {
+      data.push(0);
     }
-    data.push(...extendedData);
+    data.push(...varData);
   }
 
   // padding
@@ -81,14 +80,19 @@ const buildImage = (programName) => {
   mainObjectTable.addObject(new ProcessDataSegment('processData'));
   mainObjectTable.addObject(new ProcessAccessSegment('processAccess', { directoryObjectTable }));
   mainObjectTable.addObject(new ContextAccessSegment('processContext0Access', { directoryObjectTable, objectsRefs: ['uartInterconnect', 'processContext0Vars'] }));
-  mainObjectTable.addObject(new ContextDataSegment('processContext0Data', { sp: stack.data?.length || 0 }));
+  mainObjectTable.addObject(new ContextDataSegment('processContext0Data', { sp: 0 })); // stack grows upward, push increments SP, pop - decrements
   mainObjectTable.addObject(new GenericDataSegment('processContext0Stack', { size: stack.size, data: stack.data, type: SEGMENT_TYPE.OPERAND_STACK_DATA }));
   mainObjectTable.addObject(new GenericDataSegment('processContext0Vars', { data: varsData, type: SEGMENT_TYPE.GENERIC_DATA }));
   mainObjectTable.addObject(new DomainSegment('processContext0Domain', { directoryObjectTable, instructionsRefs: ['processContext0Instruction0'] }));
   mainObjectTable.addObject(new InstructionSegment('processContext0Instruction0', { directoryObjectTable, instructions: bytecode, contextIdx: 0 }));
 
   const objects = [];
-  return { image: objectDirectory.serialize(objects), objects, instructionsMap };
+  return {
+    image: objectDirectory.serialize(objects),
+    objects,
+    instructionsMap,
+    vars: Object.entries(data.vars).map(([name, { offset, size }]) => ({ name, offset, size })),
+  };
 };
 
 export {

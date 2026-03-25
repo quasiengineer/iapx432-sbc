@@ -10,7 +10,7 @@ export class GenericDataSegment extends BaseObject {
     super(ref, params);
 
     this.#data = params.data || [];
-    this.#size = params.size || params.data.length;
+    this.#size = params.size || this.#data.length;
     this.#type = params.type || SEGMENT_TYPE.GENERIC_DATA;
   }
 

@@ -1,4 +1,5 @@
 import { ObjectTable } from "./imageBuilder/storage/objectTable.js";
+import { SEGMENT_TYPE } from "./imageBuilder/storage/objectTableDesciptors.js";
 
 const toHex = (value, sz = 4, raw = false) => raw ? value.toString(16).padStart(sz, '0') : `0x${value.toString(16).padStart(sz, '0')}`;
 
@@ -14,7 +15,7 @@ const MEMORY_ACCESS_MODIFIER_MAP = [
   'other',
 ];
 
-const lookupAddress = (accessAddr, accessType, objects) => {
+const lookupAddress = (accessAddr, accessType, objects, vars) => {
   // interconnect register
   if (accessType === 1) {
     return toHex(accessAddr);
@@ -26,6 +27,12 @@ const lookupAddress = (accessAddr, accessType, objects) => {
   }
 
   const offset = accessAddr - object.address;
+  if (object.ref === 'processContext0Vars') {
+    const variable = vars.find(({ offset: varOffset, size }) => offset >= varOffset && offset < varOffset + size);
+    const varOffset = offset - variable.offset;
+    return `vars+${toHex(offset, 2)} ($${variable.name}${varOffset ? `+${toHex(varOffset, 2)}` : ''}, ${toHex(accessAddr)})`;
+  }
+
   if (!(object instanceof ObjectTable) || offset % 0x10 !== 0) {
     return `${object.ref}+${toHex(offset, 2)} (${toHex(accessAddr)})`;
   }
@@ -39,7 +46,7 @@ const lookupAddress = (accessAddr, accessType, objects) => {
   return `${object.ref}:Header (${toHex(accessAddr)})`;
 };
 
-const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap) => {
+const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap, vars) => {
   const accessType = (spec >> 7) & 1;
   const operation = (spec >> 6) & 1;
   const rmw = (spec >> 5) & 1;
@@ -62,7 +69,7 @@ const printAccessLogEntry = (logAddr, spec, accessAddr, objects, writesMap) => {
 
   const writeData = writesMap.has(logAddr) ? writesMap.get(logAddr) : [];
   const formattedWriteData = writeData.sort((a, b) => b.writeOffset - a.writeOffset).map(({ data }) => toHex(data, 4, true)).join(' ') || 'unknown';
-  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}'${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects)}${(operation === 0 || accessType === 1) ? '' : ` <${formattedWriteData}>`}`);
+  console.log(`  [${logAddr.toString().padStart(4, '0')}] spec: ${toHex(spec, 2)} (${opStr} ${length}b, '${accessStr}/${modifierStr}'${rmwStr}) addr: ${lookupAddress(accessAddr, accessType, objects, vars)}${(operation === 0 || accessType === 1) ? '' : ` <${formattedWriteData}>`}`);
 };
 
 const printHexDump = (image) => {
@@ -92,13 +99,32 @@ const decodeMemoryAccessFault = (faultCode) => {
     default:
       return 'unknown';
   }
-}
+};
+
+const decodeSystemTypeFault = (faultCode) => {
+  const faultType = (faultCode & 0x1F);
+  const matchedTypes = [];
+  for (const [key, value] of Object.entries(SEGMENT_TYPE)) {
+    if (value === faultType) {
+      matchedTypes.push(key);
+    }
+  }
+
+  const OBJECT_DESCRIPTOR_TYPES = ['free descriptor', 'type descriptor', 'refinement descriptor', 'storage descriptor'];
+  matchedTypes.push(`[${OBJECT_DESCRIPTOR_TYPES[faultType & 0x03]}, ${(faultType & 0x4) ? 'valid' : 'invalid'}, ${(faultType & 0x8) ? 'data' : 'access'}, ${(faultType & 0x10) ? 'no storage' : 'with storage'}]`);
+
+  return matchedTypes.join(' / ');
+};
 
 const decodeFaultCode = (faultCode) => {
   const faultType = ((faultCode & 0xC000) >> 12) | ((faultCode & 0x0060) >> 5);
   switch (faultType) {
     case 0b0101: {
       return `segment overflow (${decodeMemoryAccessFault(faultCode)})`;
+    }
+
+    case 0b0100: {
+      return `system type or decriptor fault (${decodeSystemTypeFault(faultCode)})`;
     }
 
     default:

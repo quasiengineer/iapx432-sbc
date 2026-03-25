@@ -1,5 +1,6 @@
 module control_interface #(
-  parameter WRITE_LOG_ADDR_WIDTH = 6
+  parameter WRITE_LOG_ADDR_WIDTH = 6,
+  parameter BUS_LOG_ADDR_WIDTH = 10
 )(
   input wire clk,   // 50Mhz
   input wire rst_n,
@@ -21,7 +22,7 @@ module control_interface #(
   input  wire        sram_data_valid,
 
   // UART log access to BRAM
-  output reg [ 9:0] u_log_addr,
+  output reg [BUS_LOG_ADDR_WIDTH-1:0] u_log_addr,
   output reg [23:0] u_log_data_in,
   input      [23:0] u_log_data_out,
   input             u_log_data_valid,
@@ -358,7 +359,7 @@ module control_interface #(
             CMD_IN_LOG_RD: begin
               case (in_cmd_state)
                 LOG_RD_REQ: begin
-                  u_log_addr <= in_cmd_addr[9:0];
+                  u_log_addr <= in_cmd_addr[BUS_LOG_ADDR_WIDTH-1:0];
                   u_log_rd <= 1;
                   log_rd_valid <= 1'b0;
                   in_cmd_state <= LOG_RD_TYPE;
@@ -403,7 +404,7 @@ module control_interface #(
             CMD_IN_LOG_WR: begin
               u_log_data_in <= in_cmd_value;
               u_log_wr <= 1;
-              u_log_addr <= in_cmd_addr[9:0];
+              u_log_addr <= in_cmd_addr[BUS_LOG_ADDR_WIDTH-1:0];
               in_state <= CMD_STATE_FINISHED;
             end
 

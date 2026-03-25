@@ -38,11 +38,10 @@ $(ASC): $(JSON) $(PCF) $(CONSTRAINTS)
 		--pcf $(PCF) \
 		--asc $(ASC) \
 		--pre-pack $(CONSTRAINTS) \
-		--opt-timing \
 		--report $(REPORT) \
 		--pcf-allow-unconstrained \
 		--Werror \
-		--seed 1 \
+		--seed 6 \
 		2>&1 | tee nextpnr.log; \
 	status=$$?; \
 	if [ "$$status" -ne 0 ]; then \

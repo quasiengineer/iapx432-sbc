@@ -28,6 +28,7 @@ module top (
 );
 
   localparam integer WRITE_LOG_ADDR_WIDTH = 7;
+  localparam integer BUS_LOG_ADDR_WIDTH = 12;
 
   // clock generation
   wire clk_50, clk_125;
@@ -53,34 +54,34 @@ module top (
   always @(posedge clk_50) counter <= counter + 1;
   assign LED = ~counter[24];
 
-  // PCLK/ generator (1 kHz, active-low pulse)
-  localparam integer PCLK_DIV = 5000; // 5 MHz / 5000 = 1 kHz
-  reg [12:0] pclk_div;
+  // PCLK/ generator (0.1 Hz, active-low pulse)
+  localparam integer PCLK_DIV = 50000000; // 5 MHz / 50000000 = 0.1 Hz
+  reg [25:0] pclk_div;
   reg pclk_n;
   always @(posedge clka or negedge rst_n) begin
     if (!rst_n) begin
-      pclk_div <= 13'd0;
+      pclk_div <= 26'd0;
       pclk_n   <= 1'b1;
     end
     else begin
-      if (pclk_div == PCLK_DIV - 1) pclk_div <= 13'd0;
+      if (pclk_div == PCLK_DIV - 1) pclk_div <= 26'd0;
       else pclk_div <= pclk_div + 1'b1;
-      pclk_n <= (pclk_div == 13'd0) ? 1'b0 : 1'b1;
+      pclk_n <= (pclk_div == 26'd0) ? 1'b0 : 1'b1;
     end
   end
   assign PCLK = pclk_n;
 
   // access log storage
-  wire [9:0]  u_log_addr;
+  wire [BUS_LOG_ADDR_WIDTH-1:0]  u_log_addr;
   wire [23:0] u_log_data_in;
   wire [23:0] u_log_data_out;
   wire u_log_wr, u_log_rd, u_log_data_valid;
   wire log_wr;
   wire [7:0] log_type;
   wire [15:0] log_addr;
-  wire [9:0] log_wr_ptr;
+  wire [BUS_LOG_ADDR_WIDTH-1:0] log_wr_ptr;
   execution_log #(
-    .ADDR_WIDTH(10)
+    .ADDR_WIDTH(BUS_LOG_ADDR_WIDTH)
   ) log_storage (
     .clk(clk_50),
     .rst_n(rst_n),
@@ -220,7 +221,8 @@ module top (
   );
 
   control_interface #(
-    .WRITE_LOG_ADDR_WIDTH(WRITE_LOG_ADDR_WIDTH)
+    .WRITE_LOG_ADDR_WIDTH(WRITE_LOG_ADDR_WIDTH),
+    .BUS_LOG_ADDR_WIDTH(BUS_LOG_ADDR_WIDTH)
   ) control_interface (
     .clk(clk_50),
     .rst_n(rst_n),
@@ -270,7 +272,9 @@ module top (
 
   // GDP wiring
   reg gdp_trigger_init;
-  gdp_interface gdp (
+  gdp_interface #(
+    .BUS_LOG_ADDR_WIDTH(BUS_LOG_ADDR_WIDTH)
+  ) gdp (
     .u_clk(clk_50),
     .rst_n(rst_n),
     .led_io(LED),

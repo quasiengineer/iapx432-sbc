@@ -1,0 +1,55 @@
+.stack {
+  size = 0x10
+  data = []
+}
+
+.data {
+  dummy = { size = 2, data = [0x00, 0x00] }
+  # variables for sending data via UART
+  interconnectRegPerf = { size = 2, data = [0x00, 0x00] }
+  interconnectSegmentSelector = { size = 2, data = [0x28, 0x00] }
+
+  u1_1 = { size = 1, data = [0x04] }
+  u1_2 = { size = 1, data = [0x05] }
+  u1_3 = { size = 1 }
+  u2_1 = { size = 2, data = [0x04, 0x00] }
+  u2_2 = { size = 2, data = [0x05, 0x00] }
+  u2_3 = { size = 2 }
+  u4_1 = { size = 4, data = [0x04, 0x00, 0x00, 0x00] }
+  u4_2 = { size = 4, data = [0x05, 0x00, 0x00, 0x00] }
+  u4_3 = { size = 4 }
+}
+
+sendTwoChars:
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegPerf dummy
+
+  # ======= TEST 4B vs 2B OPERATIONS =======
+
+  # straight 2b * 2b, 187 ticks
+  # MUL_2U u2_1 u2_2 u2_3
+
+  # straight 4b * 4b, 221 ticks
+  # MUL_4U u4_1 u4_2 u4_3
+
+  # conversion 2b to 4b, 249 ticks
+  # CONVERT_2U_4U u2_1 $st0
+  # MUL_4U $st0 u4_2 u4_3
+
+  # ======= TEST 2B vs 1B OPERATIONS =======
+
+  # straight 1b + 1b, 173 ticks
+  # ADD_1U u1_1 u1_2 u1_3
+
+  # straight 2b + 2b, 173 ticks
+  # ADD_2U u2_1 u2_2 u2_3
+
+  # ======= TEST 2B vs 1B COMPARISIONS =======
+
+  # straight 1b > 1b, 183 ticks
+  # GREATER_THAN_1U u1_1 u1_2 u1_3
+
+  # straight 2b > 2b, 177 ticks
+  GREATER_THAN_2U u2_1 u2_2 u1_3
+
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegPerf dummy
+  RETURN_FROM_CONTEXT

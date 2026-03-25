@@ -1,0 +1,118 @@
+.stack {
+  size = 0x20
+  data = []
+}
+
+.data {
+  idx = { size = 2 }
+  arr = { size = 55000 }                       # iteration in range [1 .. (LEN - 1)],
+                                               # array length for 8192 digits is 27307, size should be 54614
+
+  ### global variables
+
+  toPrint = { size = 2, data = [0x00, 0x20] }        # amount of digits to print
+  # toPrint = { size = 2, data = [0x00, 0x08] }
+  # toPrint = { size = 2, data = [0x00, 0x01] }
+  # toPrint = { size = 2, data = [0x0A, 0x00] }
+  LEN = { size = 2, data = [0x00, 0x00] }            # length of array - 1
+  nineCount = { size = 2, data = [0x00, 0x00] }      # count of consecutive 9s
+  previousDigit = { size = 2, data = [0x02, 0x00] }  # previous digit
+
+  ### local variables for inner loops
+  carry = { size = 4 }
+  denominator = { size = 4 }
+  numerator = { size = 4 }
+  digitFromCarry = { size = 2 }
+  nextDigit = { size = 2 }
+
+  ### constants
+  c10 = { size = 4, data = [0x0A, 0x00, 0x00, 0x00] }  # constant 10
+  c3 = { size = 4, data = [0x03, 0x00, 0x00, 0x00] }   # constant 3
+  c2 = { size = 2, data = [0x02, 0x00] }   # constant 2
+  c9 = { size = 4, data = [0x09, 0x00, 0x00, 0x00] }
+
+  ### variables for sending data via UART
+  c1 = { size = 2, data = [0x01, 0x00] }   # constant 1
+  tmp = { size = 4 }
+  sep = { size = 2, data = [0xCC, 0xCC] }
+  interconnectRegTiming = { size = 2, data = [0x00, 0x00] }
+  interconnectRegUart = { size = 2, data = [0x02, 0x00] }
+  interconnectRegDebug = { size = 2, data = [0x04, 0x00] }
+  interconnectSegmentSelector = { size = 2, data = [0x28, 0x00] }
+}
+
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegTiming c2
+
+### initialization
+  MUL_4U toPrint c10 $st0    # stk[0] = toPrint * 10, sp = 4 (toPrint is 2b, so LEN would be used as high part for operation)
+  DIV_4U c3 $st0 $st0        # stk[0] = stk[0] / 3
+  SAVE_4U LEN                # LEN = stk[0] (LEN is 2b, so high part, which is 0x0000, would be saved to nineCount)
+  MOVE_4U $st0 idx           # idx = stk[0], sp = 0 (idx is 2b, so high part would be saved as first element for an array)
+  MOVE_2U c2 $st0            # stk[0] = 2, sp = 2
+
+init_array:
+  SAVE_2U $data[idx]              # arr[idx] = stk[0]
+  DEC_2U idx idx                  # idx--
+  EQUAL_ZERO_2U idx $st0          # stk[2] = (idx == 0), sp = 4
+  BRANCH_FALSE $st0 init_array    # if (stk[2] === false) goto init_array, sp = 2
+
+  # XXX: only way to pop value from stack without extra access to memory
+  BRANCH_TRUE $st0 main_loop     # sp = 0
+
+main_loop:
+  ZERO_4U carry                  # carry = 0
+
+### computation loop
+  MOVE_2U LEN denominator                       # denominator = LEN
+  ADD_2U denominator denominator $st0           # stk[0] = denominator + denominator, sp = 2
+  INC_2U $st0 numerator                         # numerator = stk[0] + 1, sp = 0
+
+update_loop:
+  CONVERT_2U_4U $data[denominator] $st0         # stk[0] = arr[denominator], sp = 4
+  MUL_4U $st0 c10 $st0                          # stk[0] = stk[0] * 10
+  ADD_4U $st0 carry $st0                        # stk[0] = stk[0] + carry
+  SAVE_4U $st0                                  # stk[4] = stk[0], sp = 8
+  REMINDER_4U numerator $st0 $st0               # stk[4] = stk[4] % numerator
+  CONVERT_4U_2U $st0 $data[denominator]         # arr[denominator] = stk[4], sp = 4
+  DIV_4U numerator $st0 $st0                    # stk[0] = stk[0] / numerator
+  MUL_4U denominator $st0 carry                 # carry = denominator * stk[0], sp = 0
+  DEC_2U numerator $st0                         # stk[0] = numerator - 1, sp = 2
+  DEC_2U $st0 numerator                         # numerator = stk[0] - 1 (numerator -= 2), sp = 0
+  DEC_2U denominator denominator                # denominator--
+  EQUAL_ZERO_2U denominator $st0                # stk[0] = (denominator === 0), sp = 2
+  BRANCH_FALSE $st0 update_loop                 # if (stk[0] === false) goto update_loop, sp = 0
+
+### output digits
+  MOVE_2U carry $st0                    # stk[0] = carry, sp = 2
+  SAVE_2U $st0                          # stk[1] = stk[0], sp = 4
+  GREATER_THAN_2U c9 $st0 $st0          # stk[1] = stk[1] > 9
+  SAVE_2U digitFromCarry                # digitFromCarry = stk[1]
+  BRANCH_FALSE $st0 nextDigit_computed  # if (stk[1] === 0) skip decrement, sp = 2
+  SUB_2U c10 $st0 $st0                  # stk[0] = stk[0] - 10
+nextDigit_computed:
+  SAVE_2U nextDigit                     # nextDigit = stk[0]
+  EQUAL_2U $st0 c9 $st0                 # stk[0] = stk[0] === 9
+  BRANCH_FALSE $st0 print_digits
+  INC_2U nineCount nineCount
+  BRANCH main_loop
+print_digits:
+  ADD_2U previousDigit digitFromCarry $st0
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegUart $st0
+  DEC_2U toPrint toPrint
+  MOVE_2U nextDigit previousDigit
+  EQUAL_ZERO_2U nineCount $st0
+  BRANCH_TRUE $st0 check_done
+print_nines_loop:
+  # either output 0x0009, or 0x0000, based on digitFromCarry
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegUart c9[digitFromCarry]
+  DEC_2U toPrint toPrint
+  DEC_2U nineCount nineCount
+  EQUAL_ZERO_2U nineCount $st0
+  BRANCH_FALSE $st0 print_nines_loop
+check_done:
+  EQUAL_ZERO_2U toPrint $st0
+  BRANCH_FALSE $st0 main_loop
+
+### end of program
+  MOVE_TO_INTERCONNECT interconnectSegmentSelector interconnectRegTiming c2
+  RETURN_FROM_CONTEXT
